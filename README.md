@@ -8,14 +8,33 @@ See [`DESIGN.md`](DESIGN.md) for the full design and review notes.
 
 ## Data sources (local, not vendored)
 
-This project reads data already on disk — it does **not** clone anything:
+This project reads data already on disk — it does **not** vendor or clone
+anything itself. You supply two inputs:
 
 - `~/sc-data/sc_bilara_data/` — segmented Pāli root text + Sujato English,
-  joined on shared segment IDs (e.g. `mn1:1.3`).
-- `~/dpd.db` — full Digital Pāḷi Dictionary (grammar, roots, inflections,
-  sandhi), used for term archaeology.
+  joined on shared segment IDs (e.g. `mn1:1.3`). Get it from SuttaCentral's
+  bilara data: <https://github.com/suttacentral/bilara-data>
+  (`git clone` it and point `SC_DATA` at the parent, or symlink so that
+  `$SC_DATA/sc_bilara_data` resolves).
+- `~/dpd.db` — the Digital Pāḷi Dictionary SQLite database (grammar, roots,
+  inflections, sandhi), used for term archaeology and query expansion. Download
+  from the DPD project: <https://github.com/digitalpalidictionary/dpd-db>
+  (releases include the prebuilt `dpd.db`).
 
-Override locations with the `SC_DATA` / `DPD_DB` env vars (see `config.py`).
+Override either location with the `SC_DATA` / `DPD_DB` env vars (see
+`config.py`). Run `python3 cli.py check` to confirm both resolve.
+
+### Credits & licensing of the data
+
+This tool is just plumbing; the substance is other people's scholarship:
+
+- **Bhikkhu Sujato's English translations** and the SuttaCentral segmented
+  texts are dedicated to the public domain (CC0).
+- **The Digital Pāḷi Dictionary** (Bodhirasa) is released under CC BY-NC-SA
+  4.0 — please review its terms before any redistribution or non-personal use.
+
+The data is not included in this repository; these are pointers to the
+upstream projects. The code in this repo is MIT-licensed (see `LICENSE`).
 
 ## Layout
 
@@ -111,3 +130,9 @@ python3 cli.py term satipaṭṭhāna --compounds
   fused (reciprocal rank fusion) with body-chunk hits, so the stock formulaic
   suttas — terse, elided bodies that embed weakly — still surface when their
   topical title matches (e.g. SN 22.59 "The Characteristic of Not-Self").
+
+## License
+
+Code: MIT (see [`LICENSE`](LICENSE)). The Pāli/English texts and the dictionary
+are separate works under their own licenses — see *Credits & licensing of the
+data* above.
