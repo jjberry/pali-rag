@@ -66,6 +66,11 @@ python3 cli.py ask "What does the Buddha say about the cause of suffering?"
 python3 cli.py ask "..." --hq          # use the higher-quality model (opus)
 ```
 
+A Pāli technical term in the query (e.g. `dukkha`) is automatically expanded
+with its DPD English glosses before retrieval — so it matches the English-only
+index even though the indexed text says "suffering", not "dukkha". The model
+still answers your original wording; the expansion is logged to stderr.
+
 **Term archaeology** (`term`) — expands a Pāli headword to its inflected forms
 via `dpd.db`, then whole-word searches the Pāli text for every occurrence, with
 exact segment-ID citations and a per-Nikāya breakdown. No API key needed:
