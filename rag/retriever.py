@@ -16,28 +16,42 @@ import config  # noqa: E402
 
 class Retriever:
     def __init__(self) -> None:
-        # TODO:
-        #   from sentence_transformers import SentenceTransformer
-        #   import chromadb
-        #   self.model = SentenceTransformer(config.EMBED_MODEL)
-        #   client = chromadb.PersistentClient(path=str(config.CHROMA_DIR))
-        #   self.col = client.get_collection(config.CHROMA_COLLECTION)
-        raise NotImplementedError("Retriever is a stub — wire up ChromaDB.")
+        from sentence_transformers import SentenceTransformer
+        import chromadb
+
+        self.model = SentenceTransformer(config.EMBED_MODEL)
+        client = chromadb.PersistentClient(path=str(config.CHROMA_DIR))
+        try:
+            self.col = client.get_collection(config.CHROMA_COLLECTION)
+        except Exception:
+            sys.exit(
+                f"no '{config.CHROMA_COLLECTION}' collection at {config.CHROMA_DIR}; "
+                "run scripts/embed_and_index.py first"
+            )
 
     def query(self, text: str, k: int = config.TOP_K) -> list[dict]:
-        # q = self.model.encode([text], normalize_embeddings=True)
-        # res = self.col.query(query_embeddings=q.tolist(), n_results=k,
-        #                      include=["documents", "metadatas"])
-        # return [self._rehydrate(m, d) for m, d
-        #         in zip(res["metadatas"][0], res["documents"][0])]
-        raise NotImplementedError
+        # Same model + normalization as indexing (#2) so cosine is comparable.
+        q = self.model.encode([text], normalize_embeddings=True)
+        res = self.col.query(
+            query_embeddings=q.tolist(),
+            n_results=k,
+            include=["documents", "metadatas", "distances"],
+        )
+        return [
+            self._rehydrate(m, d, dist)
+            for m, d, dist in zip(
+                res["metadatas"][0], res["documents"][0], res["distances"][0]
+            )
+        ]
 
     @staticmethod
-    def _rehydrate(meta: dict, document: str) -> dict:
+    def _rehydrate(meta: dict, document: str, distance: float | None = None) -> dict:
         """Undo the list->json encoding done at index time and re-attach the
         English document text."""
         out = dict(meta)
         if isinstance(out.get("segment_ids"), str):
             out["segment_ids"] = json.loads(out["segment_ids"])
         out["english"] = document
+        if distance is not None:
+            out["distance"] = distance
         return out
