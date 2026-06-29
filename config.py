@@ -9,6 +9,13 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+# The embedding model is downloaded once and cached; there is no need to ping
+# the HF Hub on every load. Run offline by default (silences the unauthenticated
+# rate-limit warning and skips the startup network round-trip). Must be set
+# before sentence-transformers / huggingface_hub import, so it lives here since
+# config is imported first by every entry point. An explicit env var still wins.
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+
 # --- External data (already on disk; not part of this repo) ---------------
 HOME = Path.home()
 
