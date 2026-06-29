@@ -1,0 +1,5 @@
+# Phase 2 (embedding + index) and Phase 3 (generation).
+# The extract/chunk stages and `cli.py check` use only the stdlib.
+sentence-transformers==5.6.0
+chromadb==1.5.9
+anthropic==0.113.0
