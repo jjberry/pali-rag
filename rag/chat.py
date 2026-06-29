@@ -37,10 +37,15 @@ class ChatSession:
             f"{t['role'].upper()}: {t['text']}" for t in self.dialogue[-6:]
         )
         msg = f"Conversation so far:\n{history}\n\nFollow-up: {question}"
-        return pipeline.complete(
+        candidate = pipeline.complete(
             self.client, config.GEN_MODEL, prompts.CONDENSE_SYSTEM,
             [{"role": "user", "content": msg}], max_tokens=120,
         ).strip()
+        # The model occasionally answers instead of rewriting; a real query is a
+        # single short line. If it misfired, fall back to the raw follow-up.
+        if not candidate or "\n" in candidate or len(candidate) > 200:
+            return question
+        return candidate
 
     def ask(self, question: str) -> dict:
         search_query = question if not self.dialogue else self._condense(question)

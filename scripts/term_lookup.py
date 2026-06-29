@@ -100,6 +100,9 @@ PALI_DIACRITICS = set("āīūṁṃṅñṭḍṇḷṛṝḹ")
 PALI_SKIP = {
     "buddha", "bhagava", "bhagavant", "bhagavā", "tathāgata", "bhikkhu",
     "bhikkhave", "bhikkhū", "bhante", "āvuso", "āyasma", "sutta", "nikāya",
+    # Framing words that show up in (condensed) queries — esp. 'pāli', which is
+    # itself a DPD headword glossed as 'row; range; line; checkpoint; guard'.
+    "pāli", "pali", "canon", "discourse", "discourses",
 }
 
 # Common English words long enough to clear the length guard; never expanded

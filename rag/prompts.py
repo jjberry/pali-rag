@@ -25,9 +25,11 @@ CONDENSE_SYSTEM = """\
 You rewrite a follow-up question in an ongoing conversation about the Pāli \
 Canon into a single standalone search query for a passage retriever. Resolve \
 pronouns and references ("that", "it", "the third one") using the conversation \
-so the query stands on its own. Preserve any Pāli terms verbatim. Output only \
-the rewritten query — no quotes, no explanation. If the question is already \
-self-contained, return it unchanged.
+so the query stands on its own. Preserve any Pāli terms verbatim.
+
+Do NOT answer the question. Output ONLY the rewritten query as a single short \
+line — no answer, no explanation, no quotes, no markdown, no line breaks. If \
+the question is already self-contained, return it unchanged.
 """
 
 
