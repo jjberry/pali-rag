@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config  # noqa: E402
 from rag import prompts  # noqa: E402
 from rag.retriever import Retriever  # noqa: E402
+from scripts import term_lookup  # noqa: E402
 
 
 def _sources_footer(chunks: list[dict]) -> str:
@@ -29,7 +30,14 @@ def answer(question: str, k: int = config.TOP_K, high_quality: bool = False) -> 
     if not os.environ.get("ANTHROPIC_API_KEY"):
         sys.exit("ANTHROPIC_API_KEY is not set; required for `ask`.")
 
-    chunks = Retriever().query(question, k=k)
+    # Bridge the English-only index: fold DPD glosses of any Pāli term in the
+    # query into the *retrieval* text (the model still answers `question`).
+    search_text, glossed = term_lookup.expand_query(question)
+    if glossed:
+        note = ", ".join(f"{t} → {'; '.join(g)}" for t, g in glossed.items())
+        print(f"[query expanded via DPD] {note}", file=sys.stderr)
+
+    chunks = Retriever().query(search_text, k=k)
     if not chunks:
         return "No passages were retrieved for that question; the index may be empty."
 

@@ -89,6 +89,32 @@ def expand(term: str) -> set[str]:
 # match inside 'vedanākkhandha' by accident).
 WORD_RE = re.compile(r"[^\W\d_]+", re.UNICODE)
 
+# Diacritics that mark a token as unmistakably Pāli (a query word carrying one
+# is expanded even if short). ASCII Pāli loanwords (dukkha, sati, dhamma) are
+# caught by the headword lookup + length guard instead.
+PALI_DIACRITICS = set("āīūṁṃṅñṭḍṇḷṛṝḹ")
+
+# Pāli terms so ubiquitous in the canon that their glosses are noise for
+# retrieval (proper nouns / framing vocatives), not the conceptual terms a
+# user is asking about. The Pāli analogue of QUERY_STOPWORDS.
+PALI_SKIP = {
+    "buddha", "bhagava", "bhagavant", "bhagavā", "tathāgata", "bhikkhu",
+    "bhikkhave", "bhikkhū", "bhante", "āvuso", "āyasma", "sutta", "nikāya",
+}
+
+# Common English words long enough to clear the length guard; never expanded
+# even on the off chance one is also a DPD headword.
+QUERY_STOPWORDS = {
+    "about", "after", "again", "against", "another", "because", "been", "being",
+    "between", "both", "could", "does", "doing", "down", "during", "each",
+    "ever", "from", "have", "having", "here", "into", "just", "like", "made",
+    "make", "many", "mean", "meant", "more", "most", "much", "must", "only",
+    "other", "over", "said", "same", "should", "some", "such", "than", "that",
+    "their", "them", "then", "there", "these", "they", "this", "those",
+    "through", "under", "until", "very", "were", "what", "when", "where",
+    "which", "while", "with", "would", "your",
+}
+
 
 def tokenize_pali(text: str) -> set[str]:
     return {t.lower() for t in WORD_RE.findall(text)}
@@ -165,6 +191,46 @@ def compound_forms(base_forms: set[str]) -> set[str]:
         return out - forms
     finally:
         con.close()
+
+
+def _is_pali_term(token: str) -> bool:
+    """Heuristic: worth looking up as a Pāli term in an English query."""
+    if token in QUERY_STOPWORDS or token in PALI_SKIP:
+        return False
+    return any(c in PALI_DIACRITICS for c in token) or len(token) >= 4
+
+
+def expand_query(query: str) -> tuple[str, dict[str, list[str]]]:
+    """Augment an English query with the DPD English glosses of any Pāli term
+    it contains, so the English-only index can retrieve a Pāli technical term
+    (e.g. 'dukkha' -> '… suffering; unease; unsatisfactoriness …').
+
+    Returns (text_to_embed, {term: [glosses]}). The returned text is for
+    retrieval only — the caller still answers the user's original question.
+    On any DPD problem (e.g. no dpd.db) the query is returned unchanged.
+    """
+    if not config.DPD_DB.exists():
+        return query, {}
+    con = connect()
+    try:
+        found: dict[str, list[str]] = {}
+        for token in sorted({t.lower() for t in WORD_RE.findall(query)}):
+            if not _is_pali_term(token):
+                continue
+            glosses: list[str] = []
+            for hw in headwords(con, token):
+                meaning = (hw["meaning_1"] or "").strip()
+                if meaning and meaning not in glosses:
+                    glosses.append(meaning)
+            if glosses:
+                found[token] = glosses
+    finally:
+        con.close()
+
+    if not found:
+        return query, {}
+    extra = "; ".join(g for glosses in found.values() for g in glosses)
+    return f"{query} {extra}", found
 
 
 def main() -> None:
