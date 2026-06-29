@@ -15,8 +15,11 @@ we read those directly rather than re-deriving them from the encoded
 """
 from __future__ import annotations
 
+import json
+import re
 import sqlite3
 import sys
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -60,7 +63,6 @@ def deconstructions(con: sqlite3.Connection, surface: str) -> list[str]:
     ).fetchone()
     if not row:
         return []
-    import json
     try:
         return json.loads(row["deconstructor"])
     except (ValueError, TypeError):
@@ -77,6 +79,48 @@ def expand(term: str) -> set[str]:
         return forms
     finally:
         con.close()
+
+
+# Pāli words only: unicode letters (incl. diacritics ā ī ṅ ñ ṭ ḍ ṇ ḷ ṃ …),
+# no digits/punctuation. Used to whole-word match rather than substring match,
+# which is the whole point of expansion (design rule #4: 'vedana' must not
+# match inside 'vedanākkhandha' by accident).
+WORD_RE = re.compile(r"[^\W\d_]+", re.UNICODE)
+
+
+def tokenize_pali(text: str) -> set[str]:
+    return {t.lower() for t in WORD_RE.findall(text)}
+
+
+def search_corpus(forms: set[str], limit: int | None = None) -> list[dict]:
+    """Scan the segment corpus for segments whose Pāli contains one of the
+    surface forms as a whole word. Returns occurrence records with the exact
+    segment ID for citation.
+
+    Note: this catches inflected forms but not sandhi-fused compounds (e.g.
+    'sati' inside 'satova'); splitting those needs lookup.deconstructor per
+    corpus token (see deconstructions) — left as a future enhancement.
+    """
+    if not config.SEGMENTS_JSONL.exists():
+        sys.exit(f"missing {config.SEGMENTS_JSONL}; run extract_segments.py first")
+    forms = {f.lower() for f in forms}
+    hits: list[dict] = []
+    with config.SEGMENTS_JSONL.open() as f:
+        for line in f:
+            seg = json.loads(line)
+            matched = tokenize_pali(seg["pali"]) & forms
+            if matched:
+                hits.append({
+                    "segment_id": seg["segment_id"],
+                    "sutta_uid": seg["sutta_uid"],
+                    "nikaya": seg["nikaya"],
+                    "matched": sorted(matched),
+                    "pali": seg["pali"],
+                    "english": seg["english"],
+                })
+                if limit and len(hits) >= limit:
+                    break
+    return hits
 
 
 def main() -> None:
@@ -98,7 +142,25 @@ def main() -> None:
         con.close()
 
     all_forms = expand(term)
-    print(f"\nExpanded to {len(all_forms)} surface form(s) to search the Pāli field for.")
+    print(f"\nExpanded to {len(all_forms)} surface form(s); searching the Pāli field…")
+
+    hits = search_corpus(all_forms)
+    if not hits:
+        print(f"No occurrences of {term!r} (or its inflections) in the corpus.")
+        return
+
+    by_nikaya = Counter(h["nikaya"] for h in hits)
+    spread = ", ".join(f"{nik} {n}" for nik, n in sorted(by_nikaya.items()))
+    print(f"{len(hits)} occurrence(s) across {len(by_nikaya)} Nikāya(s): {spread}\n")
+
+    shown = 25
+    for h in hits[:shown]:
+        forms = "/".join(h["matched"])
+        print(f"  {h['segment_id']:<16} ({forms})")
+        print(f"      {h['pali']}")
+        print(f"      {h['english']}")
+    if len(hits) > shown:
+        print(f"\n  … and {len(hits) - shown} more occurrence(s).")
 
 
 if __name__ == "__main__":
