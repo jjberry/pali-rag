@@ -110,6 +110,43 @@ def main() -> None:
     print()
     print(f"Done. Collection '{config.CHROMA_COLLECTION}' has {col.count():,} items.")
 
+    build_titles(client, model, chunks)
+
+
+def build_titles(client, model, chunks: list[dict]) -> None:
+    """One entry per sutta (its title), for the title-fusion retrieval signal."""
+    titles: dict[str, str] = {}
+    for c in chunks:
+        uid = c["sutta_uid"]
+        if uid not in titles and c.get("sutta_title"):
+            titles[uid] = c["sutta_title"]
+    if not titles:
+        print("No sutta titles found; skipping title index.")
+        return
+
+    try:
+        client.delete_collection(config.CHROMA_TITLES_COLLECTION)
+    except Exception:
+        pass
+    tcol = client.get_or_create_collection(
+        config.CHROMA_TITLES_COLLECTION, metadata={"hnsw:space": "cosine"}
+    )
+
+    uids = list(titles)
+    embs = model.encode(
+        [titles[u] for u in uids],
+        batch_size=64,
+        normalize_embeddings=True,
+        show_progress_bar=False,
+    )
+    tcol.add(
+        ids=uids,
+        embeddings=embs.tolist(),
+        documents=[titles[u] for u in uids],
+        metadatas=[{"sutta_uid": u} for u in uids],
+    )
+    print(f"Done. Collection '{config.CHROMA_TITLES_COLLECTION}' has {tcol.count():,} titles.")
+
 
 if __name__ == "__main__":
     main()

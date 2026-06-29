@@ -34,6 +34,30 @@ def nikaya_from_uid(uid: str) -> str:
     return uid[:i].upper()
 
 
+def sutta_title(en: dict, uid: str) -> str:
+    """The sutta title is the last non-empty heading segment ``uid:0.N``.
+
+    Headings run general -> specific (collection number, then an optional vagga,
+    then the sutta title), so the highest-numbered heading segment is the title
+    (e.g. SN 22.59 -> 'The Characteristic of Not-Self', not the vagga
+    '6. Involvement' at :0.2 which the naive ':0.2' rule used to pick up)."""
+    prefix = f"{uid}:0."
+    best_n, title = -1, ""
+    for seg_id, text in en.items():
+        if not seg_id.startswith(prefix):
+            continue
+        text = text.strip()
+        if not text:
+            continue
+        try:
+            n = int(seg_id[len(prefix):].split(".")[0])
+        except ValueError:
+            continue
+        if n > best_n:
+            best_n, title = n, text
+    return title
+
+
 def iter_segments():
     problems = config.check_data()
     if problems:
@@ -59,8 +83,7 @@ def iter_segments():
         en = json.loads(en_path.read_text())
         pli = json.loads(pli_path.read_text())
         nikaya = nikaya_from_uid(uid)
-        # title: the ":0.2" segment is conventionally the sutta name.
-        title = en.get(f"{uid}:0.2", "").strip()
+        title = sutta_title(en, uid)
         for seg_id, en_text in en.items():
             yield {
                 "segment_id": seg_id,

@@ -57,6 +57,15 @@ MAX_CHUNK_CHARS = 2000
 MIN_CHUNK_CHARS = 350
 
 CHROMA_COLLECTION = "pali_canon"
+# Parallel index of one entry per sutta (its title), embedded with the same
+# model. Lets retrieval surface a sutta whose body is terse/elided (the stock
+# formulaic discourses) by matching its topical title — e.g. SN 22.59 'The
+# Characteristic of Not-Self'. Fused with body hits via reciprocal rank fusion.
+CHROMA_TITLES_COLLECTION = "pali_titles"
+TITLE_FUSION_K = 3  # how many top title-matched suttas to inject per query
+# Only inject a title-matched sutta if its title is at least this close to the
+# query (cosine distance), so a loosely-related best title can't hijack results.
+TITLE_MAX_DIST = 0.40
 
 # --- Generation -----------------------------------------------------------
 # sonnet for cost/latency; opus is the current top model for max quality.
