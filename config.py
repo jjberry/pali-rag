@@ -35,6 +35,8 @@ DATA_DIR = Path(__file__).parent / "data"
 SEGMENTS_JSONL = DATA_DIR / "segments.jsonl"
 CHUNKS_JSONL = DATA_DIR / "chunks.jsonl"
 CHROMA_DIR = DATA_DIR / "chroma"
+# Saved multi-turn `chat` conversations (resumable by name).
+SESSIONS_DIR = DATA_DIR / "sessions"
 
 # --- Pipeline parameters --------------------------------------------------
 # Nikāyas to ingest. DN/MN/SN/AN are fully covered by Sujato's English;

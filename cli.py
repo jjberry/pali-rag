@@ -4,6 +4,7 @@
 Subcommands:
     check                 verify local data layout (sc-data, dpd.db)
     ask "<question>"      retrieve + generate a grounded answer  [needs index]
+    chat                  interactive multi-turn grounded conversation
     term <pali-word>      DPD term-archaeology lookup            [needs dpd.db]
 
 The data pipeline (extract -> chunk -> embed_and_index) lives in scripts/.
@@ -36,6 +37,11 @@ def cmd_ask(args) -> int:
     return 0
 
 
+def cmd_chat(args) -> int:
+    from rag.chat import run_repl
+    return run_repl(session=args.session, resume=args.resume, high_quality=args.hq)
+
+
 def cmd_term(args) -> int:
     import subprocess
     cmd = [sys.executable, "scripts/term_lookup.py", args.word]
@@ -54,6 +60,12 @@ def main() -> int:
     p_ask.add_argument("question")
     p_ask.add_argument("--hq", action="store_true", help="use the high-quality model")
     p_ask.set_defaults(func=cmd_ask)
+
+    p_chat = sub.add_parser("chat", help="interactive multi-turn RAG conversation")
+    p_chat.add_argument("--hq", action="store_true", help="use the high-quality model")
+    p_chat.add_argument("--session", help="name this conversation (saved for --resume)")
+    p_chat.add_argument("--resume", help="resume a saved conversation by name")
+    p_chat.set_defaults(func=cmd_chat)
 
     p_term = sub.add_parser("term", help="DPD term lookup")
     p_term.add_argument("word")

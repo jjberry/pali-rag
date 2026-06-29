@@ -19,6 +19,18 @@ where they sharpen the point.
 """
 
 
+# Used in `chat` to turn a follow-up into a standalone retrieval query, so the
+# passage search doesn't degrade on references like "expand on that".
+CONDENSE_SYSTEM = """\
+You rewrite a follow-up question in an ongoing conversation about the Pāli \
+Canon into a single standalone search query for a passage retriever. Resolve \
+pronouns and references ("that", "it", "the third one") using the conversation \
+so the query stands on its own. Preserve any Pāli terms verbatim. Output only \
+the rewritten query — no quotes, no explanation. If the question is already \
+self-contained, return it unchanged.
+"""
+
+
 def format_context(chunks: list[dict]) -> str:
     """Render retrieved chunks into the context block for the user turn."""
     blocks = []

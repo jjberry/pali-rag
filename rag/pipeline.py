@@ -1,6 +1,8 @@
 """End-to-end query -> retrieved context -> grounded Claude answer.
 
-Wires the Retriever to the Anthropic API using the prompt templates.
+Wires the Retriever to the Anthropic API using the prompt templates. The
+shared helpers here (`complete`, `source_uids`, `retrieve`, `user_turn`) are
+also used by the multi-turn `rag.chat` session.
 """
 from __future__ import annotations
 
@@ -15,50 +17,20 @@ from rag.retriever import Retriever  # noqa: E402
 from scripts import term_lookup  # noqa: E402
 
 
-def _sources_footer(chunks: list[dict]) -> str:
-    """De-duplicated list of retrieved sutta UIDs, in first-seen order."""
-    seen: list[str] = []
-    for c in chunks:
-        uid = c.get("sutta_uid", "?")
-        if uid not in seen:
-            seen.append(uid)
-    return "Sources retrieved: " + ", ".join(seen)
-
-
-def answer(question: str, k: int = config.TOP_K, high_quality: bool = False) -> str:
-    # Fail fast before the (slow) embedding model load if we can't generate.
+def require_api_key() -> None:
+    """Fail fast before the (slow) embedding model load if we can't generate."""
     if not os.environ.get("ANTHROPIC_API_KEY"):
-        sys.exit("ANTHROPIC_API_KEY is not set; required for `ask`.")
+        sys.exit("ANTHROPIC_API_KEY is not set; required for `ask`/`chat`.")
 
-    # Bridge the English-only index: fold DPD glosses of any Pāli term in the
-    # query into the *retrieval* text (the model still answers `question`).
-    search_text, glossed = term_lookup.expand_query(question)
-    if glossed:
-        note = ", ".join(f"{t} → {'; '.join(g)}" for t, g in glossed.items())
-        print(f"[query expanded via DPD] {note}", file=sys.stderr)
 
-    chunks = Retriever().query(search_text, k=k)
-    if not chunks:
-        return "No passages were retrieved for that question; the index may be empty."
-
-    context = prompts.format_context(chunks)
-
+def complete(client, model: str, system: str, messages: list[dict],
+             max_tokens: int = 1500) -> str:
+    """One Anthropic call, with the project's clean error handling."""
     import anthropic
 
-    client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
-    model = config.GEN_MODEL_HQ if high_quality else config.GEN_MODEL
     try:
         resp = client.messages.create(
-            model=model,
-            max_tokens=1500,
-            system=prompts.SYSTEM_PROMPT,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Question: {question}\n\n"
-                    f"Retrieved passages:\n\n{context}",
-                }
-            ],
+            model=model, max_tokens=max_tokens, system=system, messages=messages
         )
     except anthropic.AuthenticationError:
         sys.exit("Anthropic auth failed (401): the ANTHROPIC_API_KEY is invalid or revoked.")
@@ -66,5 +38,52 @@ def answer(question: str, k: int = config.TOP_K, high_quality: bool = False) -> 
         sys.exit(f"Anthropic API error ({e.status_code}): {e.message}")
     except anthropic.APIConnectionError as e:
         sys.exit(f"Could not reach the Anthropic API: {e}")
-    body = "".join(block.text for block in resp.content if block.type == "text")
+    return "".join(block.text for block in resp.content if block.type == "text")
+
+
+def source_uids(chunks: list[dict]) -> list[str]:
+    """De-duplicated retrieved sutta UIDs, in first-seen order."""
+    seen: list[str] = []
+    for c in chunks:
+        uid = c.get("sutta_uid", "?")
+        if uid not in seen:
+            seen.append(uid)
+    return seen
+
+
+def _sources_footer(chunks: list[dict]) -> str:
+    return "Sources retrieved: " + ", ".join(source_uids(chunks))
+
+
+def retrieve(retriever: Retriever, query: str, k: int = config.TOP_K,
+             announce: bool = True) -> list[dict]:
+    """DPD-expand a query (bridging the English-only index) and retrieve."""
+    search_text, glossed = term_lookup.expand_query(query)
+    if glossed and announce:
+        note = ", ".join(f"{t} → {'; '.join(g)}" for t, g in glossed.items())
+        print(f"[query expanded via DPD] {note}", file=sys.stderr)
+    return retriever.query(search_text, k=k)
+
+
+def user_turn(question: str, chunks: list[dict]) -> dict:
+    """Build the user message that carries the retrieved passages."""
+    context = prompts.format_context(chunks)
+    return {
+        "role": "user",
+        "content": f"Question: {question}\n\nRetrieved passages:\n\n{context}",
+    }
+
+
+def answer(question: str, k: int = config.TOP_K, high_quality: bool = False) -> str:
+    require_api_key()
+
+    chunks = retrieve(Retriever(), question, k=k)
+    if not chunks:
+        return "No passages were retrieved for that question; the index may be empty."
+
+    import anthropic
+
+    client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
+    model = config.GEN_MODEL_HQ if high_quality else config.GEN_MODEL
+    body = complete(client, model, prompts.SYSTEM_PROMPT, [user_turn(question, chunks)])
     return f"{body}\n\n{_sources_footer(chunks)}"
