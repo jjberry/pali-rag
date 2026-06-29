@@ -71,6 +71,18 @@ with its DPD English glosses before retrieval — so it matches the English-only
 index even though the indexed text says "suffering", not "dukkha". The model
 still answers your original wording; the expansion is logged to stderr.
 
+**Multi-turn conversation** (`chat`) — `ask` is one-shot; `chat` is an
+interactive REPL that keeps the conversation going. Each follow-up is condensed
+into a standalone search query (using the history) before retrieval, so
+references like "expand on that" still retrieve the right passages. Sessions
+can be saved and resumed:
+
+```bash
+python3 cli.py chat                       # ephemeral session
+python3 cli.py chat --session anatta      # save under a name
+python3 cli.py chat --resume anatta       # continue it later
+```
+
 **Term archaeology** (`term`) — expands a Pāli headword to its inflected forms
 via `dpd.db`, then whole-word searches the Pāli text for every occurrence, with
 exact segment-ID citations and a per-Nikāya breakdown. No API key needed:
