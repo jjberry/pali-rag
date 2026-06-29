@@ -193,6 +193,47 @@ def compound_forms(base_forms: set[str]) -> set[str]:
         con.close()
 
 
+def _meanings_for_ids(con: sqlite3.Connection, ids: list[int]) -> list[str]:
+    if not ids:
+        return []
+    placeholders = ",".join("?" * len(ids))
+    rows = con.execute(
+        f"SELECT meaning_1 FROM dpd_headwords WHERE id IN ({placeholders})", ids
+    ).fetchall()
+    out: list[str] = []
+    for r in rows:
+        meaning = (r["meaning_1"] or "").strip()
+        if meaning and meaning not in out:
+            out.append(meaning)
+    return out
+
+
+def headword_glosses(con: sqlite3.Connection, token: str) -> list[str]:
+    """English glosses (DPD meaning_1) for a Pāli token. Tries a direct lemma
+    match first, then resolves the surface form to its headword(s) via the
+    lookup table — DPD lemmas are citation forms, so inflected surface forms
+    like 'anattā' (lemma 'anatta') miss a lemma_1 match."""
+    glosses: list[str] = []
+    for hw in headwords(con, token):
+        meaning = (hw["meaning_1"] or "").strip()
+        if meaning and meaning not in glosses:
+            glosses.append(meaning)
+    if glosses:
+        return glosses
+
+    row = con.execute(
+        "SELECT headwords FROM lookup WHERE lookup_key = ? AND headwords != ''",
+        (token,),
+    ).fetchone()
+    if not row:
+        return []
+    try:
+        ids = json.loads(row["headwords"])
+    except (ValueError, TypeError):
+        return []
+    return _meanings_for_ids(con, ids)
+
+
 def _is_pali_term(token: str) -> bool:
     """Heuristic: worth looking up as a Pāli term in an English query."""
     if token in QUERY_STOPWORDS or token in PALI_SKIP:
@@ -217,11 +258,7 @@ def expand_query(query: str) -> tuple[str, dict[str, list[str]]]:
         for token in sorted({t.lower() for t in WORD_RE.findall(query)}):
             if not _is_pali_term(token):
                 continue
-            glosses: list[str] = []
-            for hw in headwords(con, token):
-                meaning = (hw["meaning_1"] or "").strip()
-                if meaning and meaning not in glosses:
-                    glosses.append(meaning)
+            glosses = headword_glosses(con, token)
             if glosses:
                 found[token] = glosses
     finally:
