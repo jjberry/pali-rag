@@ -95,3 +95,7 @@ python3 cli.py term satipaṭṭhāna --compounds
 - **Chunks are size-bounded**: capped at `config.MAX_CHUNK_CHARS` to avoid
   silent truncation, and merged up to `config.MIN_CHUNK_CHARS` so tiny
   one-sentence / title-only paragraphs don't out-rank real content.
+- **Title-fusion retrieval**: a parallel one-entry-per-sutta title index is
+  fused (reciprocal rank fusion) with body-chunk hits, so the stock formulaic
+  suttas — terse, elided bodies that embed weakly — still surface when their
+  topical title matches (e.g. SN 22.59 "The Characteristic of Not-Self").
