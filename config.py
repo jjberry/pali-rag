@@ -42,6 +42,13 @@ EMBED_MODEL = os.environ.get("EMBED_MODEL", "BAAI/bge-large-en-v1.5")
 # not silently truncated at embedding time (~512 tokens ≈ 2000 chars).
 MAX_CHUNK_CHARS = 2000
 
+# Retrieval-quality follow-up: the suttas segment into many one-sentence
+# paragraphs (and a title-only ':0' paragraph per sutta). Emitting one chunk
+# each produced tiny, keyword-only chunks (e.g. a bare sutta title) that
+# out-ranked real content. Merge consecutive paragraphs until a chunk reaches
+# this soft floor, breaking only at a paragraph boundary past it.
+MIN_CHUNK_CHARS = 350
+
 CHROMA_COLLECTION = "pali_canon"
 
 # --- Generation -----------------------------------------------------------
