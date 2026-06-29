@@ -23,35 +23,56 @@ Override locations with the `SC_DATA` / `DPD_DB` env vars (see `config.py`).
 config.py                 paths + pipeline parameters (points at ~/sc-data, ~/dpd.db)
 cli.py                    entry point: check | ask | term
 scripts/
-  extract_segments.py     [runnable]  join Pāli+English -> data/segments.jsonl
-  chunk.py                [runnable]  paragraph chunks   -> data/chunks.jsonl
-  embed_and_index.py      [stub]      embed (English only) -> ChromaDB
-  term_lookup.py          [partial]   DPD term expansion (inflection TODO)
+  extract_segments.py     join Pāli+English      -> data/segments.jsonl
+  chunk.py                size-merged chunks      -> data/chunks.jsonl
+  embed_and_index.py      embed (English only)    -> ChromaDB (data/chroma/)
+  term_lookup.py          DPD inflection expansion + Pāli-field search
 rag/
-  retriever.py            [stub]      ChromaDB query
-  prompts.py              [done]      grounding system prompt
-  pipeline.py             [stub]      retrieve -> Claude
+  retriever.py            ChromaDB query
+  prompts.py              grounding system prompt
+  pipeline.py             retrieve -> Claude
 data/                     generated artifacts (gitignored)
 ```
 
-## Quick start
+## Setup
 
 ```bash
 # 1. Confirm the local data is where config.py expects:
 python3 cli.py check
 
-# 2. Build the aligned dataset and chunks (stdlib only, ~30K chunks, fast):
-python3 scripts/extract_segments.py
-python3 scripts/chunk.py
+# 2. Build the aligned dataset and chunks (stdlib only, fast):
+python3 scripts/extract_segments.py    # -> ~148K segments
+python3 scripts/chunk.py               # -> ~14.7K chunks
 
-# 3. Install ML/LLM deps for the rest:
+# 3. Install the ML/LLM deps:
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# 4. (to implement) embed + index, then query:
-python3 scripts/embed_and_index.py
+# 4. Embed + build the vector index (downloads the embed model on first run;
+#    ~7 min on CPU). Use --reset to rebuild an existing index.
+python3 scripts/embed_and_index.py --reset
+```
+
+## Running queries
+
+Both query commands assume the venv is active (`source .venv/bin/activate`).
+
+**Grounded RAG answer** (`ask`) — retrieves passages and has Claude answer with
+sutta-UID citations. Requires an Anthropic API key:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
 python3 cli.py ask "What does the Buddha say about the cause of suffering?"
+python3 cli.py ask "..." --hq          # use the higher-quality model (opus)
+```
+
+**Term archaeology** (`term`) — expands a Pāli headword to its inflected forms
+via `dpd.db`, then whole-word searches the Pāli text for every occurrence, with
+exact segment-ID citations and a per-Nikāya breakdown. No API key needed:
+
+```bash
 python3 cli.py term vedanā
+python3 cli.py term satipaṭṭhāna
 ```
 
 ## Design decisions carried into the code
@@ -61,6 +82,6 @@ python3 cli.py term vedanā
 - **Term archaeology runs through `dpd.db`** (inflection + sandhi expansion),
   not naive substring search.
 - **Inner-join on the English side** intentionally drops Pāli-only suttas.
-- **Chunk size is capped** (`config.MAX_CHUNK_CHARS`) to avoid silent
-  truncation at embedding time.
-```
+- **Chunks are size-bounded**: capped at `config.MAX_CHUNK_CHARS` to avoid
+  silent truncation, and merged up to `config.MIN_CHUNK_CHARS` so tiny
+  one-sentence / title-only paragraphs don't out-rank real content.
