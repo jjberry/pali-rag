@@ -86,6 +86,17 @@ def run_repl(session: str | None = None, resume: str | None = None,
              high_quality: bool = False) -> int:
     pipeline.require_api_key()
 
+    # The REPL needs a real terminal; under a non-interactive stdin (e.g. a
+    # harness `!` shell or /dev/null) input() returns EOF immediately. Check
+    # before the (slow) model load so it fails fast.
+    if not sys.stdin.isatty():
+        print(
+            "chat needs an interactive terminal (stdin is not a TTY). Run it in "
+            "a real shell, or use `cli.py ask \"<question>\"` for a one-shot answer.",
+            file=sys.stderr,
+        )
+        return 1
+
     if resume:
         conv = ChatSession.load(resume)
         name = resume
@@ -119,7 +130,7 @@ def run_repl(session: str | None = None, resume: str | None = None,
         if name:
             conv.save(name)
 
-    if name:
+    if name and conv.dialogue:  # don't write an empty session file
         conv.save(name)
         print(f"Saved session '{name}'. Resume with: cli.py chat --resume {name}")
     return 0
