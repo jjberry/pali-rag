@@ -5,17 +5,21 @@ Revision #1: the corpus is ~30K chunks, so this runs in minutes on CPU and
 ChromaDB is used for persistence/convenience, not scale.
 Revision #2: embed ENGLISH ONLY; store Pāli + citations as metadata.
 
-Requires: sentence-transformers, chromadb (see requirements.txt). Stub — the
-embedding/indexing body is left to implement.
+Requires: sentence-transformers, chromadb (see requirements.txt).
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config  # noqa: E402
+
+# Encode + add in batches so we never hold all embeddings in memory at once
+# and never exceed ChromaDB's per-call max batch size.
+BATCH = 512
 
 
 def load_chunks() -> list[dict]:
@@ -24,27 +28,87 @@ def load_chunks() -> list[dict]:
     return [json.loads(line) for line in config.CHUNKS_JSONL.open()]
 
 
-def main() -> None:
-    chunks = load_chunks()
-    print(f"Loaded {len(chunks)} chunks for embedding with {config.EMBED_MODEL}")
+def to_metadata(chunk: dict) -> dict:
+    """Everything except the English document becomes metadata.
 
-    # TODO:
-    #   from sentence_transformers import SentenceTransformer
-    #   import chromadb
-    #   model = SentenceTransformer(config.EMBED_MODEL)
-    #   texts = [c["english"] for c in chunks]            # English only (#2)
-    #   embs  = model.encode(texts, batch_size=64, show_progress_bar=True,
-    #                        normalize_embeddings=True)
-    #   client = chromadb.PersistentClient(path=str(config.CHROMA_DIR))
-    #   col = client.get_or_create_collection(config.CHROMA_COLLECTION,
-    #                                         metadata={"hnsw:space": "cosine"})
-    #   col.add(ids=[c["chunk_id"] for c in chunks],
-    #           embeddings=embs.tolist(),
-    #           documents=texts,
-    #           metadatas=[{k: (json.dumps(v) if isinstance(v, list) else v)
-    #                       for k, v in c.items() if k != "english"}
-    #                      for c in chunks])
-    raise SystemExit("embed_and_index.py is a stub — implement the body (see TODO).")
+    ChromaDB metadata values must be scalars, so lists are JSON-encoded
+    (the retriever reverses this) and None values are dropped — the
+    retriever treats a missing key the same as null.
+    """
+    meta: dict = {}
+    for key, value in chunk.items():
+        if key == "english":
+            continue
+        if value is None:
+            continue
+        meta[key] = json.dumps(value) if isinstance(value, list) else value
+    return meta
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--reset",
+        action="store_true",
+        help="drop and rebuild the collection (default: refuse if it already "
+        "has data, to avoid silent duplicate/stale rows)",
+    )
+    args = ap.parse_args()
+
+    chunks = load_chunks()
+    print(f"Loaded {len(chunks):,} chunks; embedding English with {config.EMBED_MODEL}")
+
+    from sentence_transformers import SentenceTransformer
+    import chromadb
+
+    client = chromadb.PersistentClient(path=str(config.CHROMA_DIR))
+
+    if args.reset:
+        try:
+            client.delete_collection(config.CHROMA_COLLECTION)
+        except Exception:
+            pass  # didn't exist yet
+
+    col = client.get_or_create_collection(
+        config.CHROMA_COLLECTION, metadata={"hnsw:space": "cosine"}
+    )
+
+    existing = col.count()
+    if existing and not args.reset:
+        sys.exit(
+            f"collection '{config.CHROMA_COLLECTION}' already has {existing:,} "
+            f"items at {config.CHROMA_DIR}. Re-run with --reset to rebuild."
+        )
+
+    model = SentenceTransformer(config.EMBED_MODEL)
+    # Respect ChromaDB's add() ceiling if the build exposes it.
+    batch = BATCH
+    try:
+        batch = min(batch, client.get_max_batch_size())
+    except Exception:
+        pass
+
+    total = len(chunks)
+    for start in range(0, total, batch):
+        part = chunks[start : start + batch]
+        texts = [c["english"] for c in part]  # English only (#2)
+        embs = model.encode(
+            texts,
+            batch_size=64,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
+        col.add(
+            ids=[c["chunk_id"] for c in part],
+            embeddings=embs.tolist(),
+            documents=texts,
+            metadatas=[to_metadata(c) for c in part],
+        )
+        done = min(start + batch, total)
+        print(f"  indexed {done:,}/{total:,}", end="\r", flush=True)
+
+    print()
+    print(f"Done. Collection '{config.CHROMA_COLLECTION}' has {col.count():,} items.")
 
 
 if __name__ == "__main__":
