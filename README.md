@@ -73,6 +73,11 @@ exact segment-ID citations and a per-Nikāya breakdown. No API key needed:
 ```bash
 python3 cli.py term vedanā
 python3 cli.py term satipaṭṭhāna
+
+# --compounds also matches sandhi-fused compounds containing the term (via
+# lookup.deconstructor), recovering hits like 'satipaṭṭhānāti' (+iti) that
+# whole-word matching misses:
+python3 cli.py term satipaṭṭhāna --compounds
 ```
 
 ## Design decisions carried into the code
