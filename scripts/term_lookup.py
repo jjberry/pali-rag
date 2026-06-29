@@ -6,8 +6,12 @@ heavily inflected and uses sandhi (vedanā -> vedanānaṁ, fused into compounds
 This module uses the local DPD database (~/dpd.db) to expand a headword into
 the surface forms to actually search for in the corpus.
 
-Read-only against dpd.db via stdlib sqlite3. The inflection-table expansion is
-stubbed; the headword + deconstructor lookups are wired up as a starting point.
+Read-only against dpd.db via stdlib sqlite3.
+
+DPD pre-computes the surface forms for every headword in the `inflections`
+column (a comma-separated list, e.g. vedanā -> vedanā,vedanāyo,vedanaṃ,…), so
+we read those directly rather than re-deriving them from the encoded
+`inflection_templates` grid (stem + ending per cell). Same result, no parsing.
 """
 from __future__ import annotations
 
@@ -31,22 +35,20 @@ def headwords(con: sqlite3.Connection, lemma: str) -> list[sqlite3.Row]:
     """Dictionary entries whose lemma matches (DPD strips trailing digits on
     homonyms, e.g. 'dhamma 1'); match on the lemma stem."""
     return con.execute(
-        "SELECT id, lemma_1, pos, grammar, pattern, meaning_1 "
+        "SELECT id, lemma_1, pos, grammar, pattern, meaning_1, inflections "
         "FROM dpd_headwords WHERE lemma_1 = ? OR lemma_1 LIKE ? "
         "ORDER BY id",
         (lemma, f"{lemma} %"),
     ).fetchall()
 
 
-def inflected_forms(con: sqlite3.Connection, pattern: str) -> list[str]:
-    """Expand a declension/conjugation pattern into surface forms via
-    inflection_templates. TODO: parse the template's encoded inflection grid
-    (column 'data') and concatenate stem + endings for each cell."""
-    # row = con.execute(
-    #     "SELECT data FROM inflection_templates WHERE pattern = ?", (pattern,)
-    # ).fetchone()
-    # ... parse row["data"] (JSON inflection grid) -> list of endings ...
-    return []
+def inflected_forms(hw: sqlite3.Row) -> list[str]:
+    """Surface forms for a headword, read from DPD's pre-computed comma-
+    separated `inflections` column. Indeclinables may have an empty column."""
+    raw = hw["inflections"]
+    if not raw:
+        return []
+    return [f.strip() for f in raw.split(",") if f.strip()]
 
 
 def deconstructions(con: sqlite3.Connection, surface: str) -> list[str]:
@@ -71,8 +73,7 @@ def expand(term: str) -> set[str]:
     try:
         forms = {term}
         for hw in headwords(con, term):
-            if hw["pattern"]:
-                forms.update(inflected_forms(con, hw["pattern"]))
+            forms.update(inflected_forms(hw))
         return forms
     finally:
         con.close()
@@ -90,9 +91,14 @@ def main() -> None:
         for hw in rows:
             print(f"{hw['lemma_1']}  [{hw['pos']}]  pattern={hw['pattern']}")
             print(f"    {hw['meaning_1']}")
+            forms = inflected_forms(hw)
+            if forms:
+                print(f"    {len(forms)} inflected forms: {', '.join(forms)}")
     finally:
         con.close()
-    print("\nNote: inflection expansion is stubbed (see inflected_forms TODO).")
+
+    all_forms = expand(term)
+    print(f"\nExpanded to {len(all_forms)} surface form(s) to search the Pāli field for.")
 
 
 if __name__ == "__main__":

@@ -39,17 +39,24 @@ def answer(question: str, k: int = config.TOP_K, high_quality: bool = False) -> 
 
     client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
     model = config.GEN_MODEL_HQ if high_quality else config.GEN_MODEL
-    resp = client.messages.create(
-        model=model,
-        max_tokens=1500,
-        system=prompts.SYSTEM_PROMPT,
-        messages=[
-            {
-                "role": "user",
-                "content": f"Question: {question}\n\n"
-                f"Retrieved passages:\n\n{context}",
-            }
-        ],
-    )
+    try:
+        resp = client.messages.create(
+            model=model,
+            max_tokens=1500,
+            system=prompts.SYSTEM_PROMPT,
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Question: {question}\n\n"
+                    f"Retrieved passages:\n\n{context}",
+                }
+            ],
+        )
+    except anthropic.AuthenticationError:
+        sys.exit("Anthropic auth failed (401): the ANTHROPIC_API_KEY is invalid or revoked.")
+    except anthropic.APIStatusError as e:
+        sys.exit(f"Anthropic API error ({e.status_code}): {e.message}")
+    except anthropic.APIConnectionError as e:
+        sys.exit(f"Could not reach the Anthropic API: {e}")
     body = "".join(block.text for block in resp.content if block.type == "text")
     return f"{body}\n\n{_sources_footer(chunks)}"
