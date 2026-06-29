@@ -38,7 +38,10 @@ def cmd_ask(args) -> int:
 
 def cmd_term(args) -> int:
     import subprocess
-    return subprocess.call([sys.executable, "scripts/term_lookup.py", args.word])
+    cmd = [sys.executable, "scripts/term_lookup.py", args.word]
+    if args.compounds:
+        cmd.append("--compounds")
+    return subprocess.call(cmd)
 
 
 def main() -> int:
@@ -54,6 +57,8 @@ def main() -> int:
 
     p_term = sub.add_parser("term", help="DPD term lookup")
     p_term.add_argument("word")
+    p_term.add_argument("--compounds", action="store_true",
+                        help="also match sandhi-fused compounds containing the term")
     p_term.set_defaults(func=cmd_term)
 
     args = parser.parse_args()

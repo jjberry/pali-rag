@@ -15,7 +15,9 @@ we read those directly rather than re-deriving them from the encoded
 """
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import re
 import sqlite3
 import sys
@@ -123,10 +125,60 @@ def search_corpus(forms: set[str], limit: int | None = None) -> list[dict]:
     return hits
 
 
+def compound_forms(base_forms: set[str]) -> set[str]:
+    """Sandhi-fused compound surface forms in which one of `base_forms` is a
+    component, via lookup.deconstructor (e.g. searching 'satipaṭṭhāna' also
+    finds 'satipaṭṭhānasuttaṃ', which whole-word matching alone misses).
+
+    The deconstructor column is a JSON array of ' + '-joined candidate splits;
+    we keep a compound if any split has a component exactly equal to one of our
+    forms. A single LIKE on the forms' common prefix narrows 1.3M rows cheaply;
+    the exact-component test then removes coincidental substring matches.
+    """
+    forms = {f.lower() for f in base_forms}
+    prefix = os.path.commonprefix(sorted(forms))
+    patterns = [prefix] if len(prefix) >= 3 else list(forms)
+
+    con = connect()
+    try:
+        rows: dict[str, str] = {}
+        for pat in patterns:
+            for r in con.execute(
+                "SELECT lookup_key, deconstructor FROM lookup "
+                "WHERE deconstructor LIKE ? AND deconstructor != ''",
+                (f"%{pat}%",),
+            ):
+                rows[r["lookup_key"]] = r["deconstructor"]
+
+        out: set[str] = set()
+        for key, decon in rows.items():
+            try:
+                splits = json.loads(decon)
+            except (ValueError, TypeError):
+                continue
+            for split in splits:
+                parts = {p.strip().lower() for p in split.split("+")}
+                if forms & parts:
+                    out.add(key.lower())
+                    break
+        # Plain inflected forms are already handled by the whole-word pass.
+        return out - forms
+    finally:
+        con.close()
+
+
 def main() -> None:
-    if len(sys.argv) != 2:
-        sys.exit("usage: term_lookup.py <pali-term>")
-    term = sys.argv[1]
+    ap = argparse.ArgumentParser(description="DPD term-archaeology lookup")
+    ap.add_argument("term", help="Pāli headword to trace")
+    ap.add_argument(
+        "--compounds",
+        action="store_true",
+        help="also match sandhi-fused compounds containing the term "
+        "(via lookup.deconstructor), not just whole-word inflections",
+    )
+    args = ap.parse_args()
+    term = args.term
+
     con = connect()
     try:
         rows = headwords(con, term)
@@ -141,22 +193,35 @@ def main() -> None:
     finally:
         con.close()
 
-    all_forms = expand(term)
-    print(f"\nExpanded to {len(all_forms)} surface form(s); searching the Pāli field…")
+    base = expand(term)
+    comp: set[str] = set()
+    if args.compounds:
+        comp = compound_forms(base)
+        print(
+            f"\nExpanded to {len(base)} inflected + {len(comp)} compound "
+            "surface form(s); searching the Pāli field…"
+        )
+    else:
+        print(f"\nExpanded to {len(base)} surface form(s); searching the Pāli field…")
 
-    hits = search_corpus(all_forms)
+    hits = search_corpus(base | comp)
     if not hits:
         print(f"No occurrences of {term!r} (or its inflections) in the corpus.")
         return
 
     by_nikaya = Counter(h["nikaya"] for h in hits)
     spread = ", ".join(f"{nik} {n}" for nik, n in sorted(by_nikaya.items()))
-    print(f"{len(hits)} occurrence(s) across {len(by_nikaya)} Nikāya(s): {spread}\n")
+    n_compound = sum(1 for h in hits if set(h["matched"]) & comp)
+    extra = f" ({n_compound} via compounds)" if comp else ""
+    print(
+        f"{len(hits)} occurrence(s){extra} across {len(by_nikaya)} "
+        f"Nikāya(s): {spread}\n"
+    )
 
     shown = 25
     for h in hits[:shown]:
-        forms = "/".join(h["matched"])
-        print(f"  {h['segment_id']:<16} ({forms})")
+        tag = " [compound]" if set(h["matched"]) & comp else ""
+        print(f"  {h['segment_id']:<16} ({'/'.join(h['matched'])}){tag}")
         print(f"      {h['pali']}")
         print(f"      {h['english']}")
     if len(hits) > shown:
