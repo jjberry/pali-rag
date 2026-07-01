@@ -8,3 +8,4 @@ data/segments.jsonl
 data/chunks.jsonl
 data/chroma/
 data/sessions/
+data/answers/

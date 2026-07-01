@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} — Pāli Canon RAG</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">Pāli Canon RAG</a>
+    <nav>
+      <a href="/" {% if section == 'read' %}class="active"{% endif %}>Read</a>
+      <a href="/ask" {% if section == 'ask' %}class="active"{% endif %}>Ask</a>
+      <a href="/chat" {% if section == 'chat' %}class="active"{% endif %}>Chat</a>
+    </nav>
+  </header>
+  <main>
+    {% block body %}{% endblock %}
+  </main>
+</body>
+</html>

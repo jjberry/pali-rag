@@ -40,7 +40,7 @@ upstream projects. The code in this repo is MIT-licensed (see `LICENSE`).
 
 ```
 config.py                 paths + pipeline parameters (points at ~/sc-data, ~/dpd.db)
-cli.py                    entry point: check | ask | term
+cli.py                    entry point: check | ask | chat | web | term
 scripts/
   extract_segments.py     join Pāli+English      -> data/segments.jsonl
   chunk.py                size-merged chunks      -> data/chunks.jsonl
@@ -50,6 +50,11 @@ rag/
   retriever.py            ChromaDB query
   prompts.py              grounding system prompt
   pipeline.py             retrieve -> Claude
+  chat.py                 multi-turn session (condense + retrieve + history)
+web/
+  app.py                  stdlib server: read / ask / chat
+  render.py               Markdown -> HTML (tables on)
+  templates/, static/     Jinja2 pages + CSS
 data/                     generated artifacts (gitignored)
 ```
 
@@ -100,6 +105,26 @@ can be saved and resumed:
 python3 cli.py chat                       # ephemeral session
 python3 cli.py chat --session anatta      # save under a name
 python3 cli.py chat --resume anatta       # continue it later
+```
+
+**Saving answers to re-read later** — answers are written as Markdown under
+`data/answers/` so you can revisit them without re-running the query:
+
+```bash
+python3 cli.py ask "..." --save           # auto-named data/answers/<ts>-<slug>.md
+python3 cli.py ask "..." --save notes.md  # or a path you choose
+```
+
+In `chat`, type `:save [path]` to export a transcript on demand; a
+`--session`-named chat also auto-exports `data/answers/<name>.md` on exit.
+
+**Web UI** (`web`) — a local browser front-end to read saved answers and run
+ask/chat with rendered Markdown (tables and all). Stdlib server, binds to
+`127.0.0.1` only; Read needs no API key, Ask/Chat do:
+
+```bash
+python3 cli.py web                        # http://127.0.0.1:8000
+python3 cli.py web --port 8080 --hq
 ```
 
 **Term archaeology** (`term`) — expands a Pāli headword to its inflected forms

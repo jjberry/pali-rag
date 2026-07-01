@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Chat</h1>
+<p class="meta">
+  Multi-turn, history-aware. Session <code>{{ sid }}</code> — auto-saved to
+  <code>data/answers/{{ sid }}.md</code>.
+  <a href="/chat?new=1">new session</a>
+</p>
+
+{% if turns %}
+<div class="transcript">
+  {% for t in turns %}
+  <div class="turn {{ t.role }}">
+    {% if t.role == 'user' %}
+      <div class="q">{{ t.text }}</div>
+    {% else %}
+      <article class="rendered">{{ t.html | safe }}</article>
+      {% if t.sources %}<p class="sources">Sources: {{ t.sources }}</p>{% endif %}
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+<form method="post" action="/chat" class="ask-form" onsubmit="return onAsk()">
+  <input type="hidden" name="sid" value="{{ sid }}">
+  <textarea name="question" rows="2" placeholder="Ask a follow-up…" required autofocus></textarea>
+  <div class="row">
+    <button type="submit" id="askbtn">Send</button>
+    <span id="spinner" class="spinner" hidden>thinking…</span>
+  </div>
+</form>
+
+<script>
+function onAsk() {
+  document.getElementById('askbtn').disabled = true;
+  document.getElementById('spinner').hidden = false;
+  return true;
+}
+</script>
+{% endblock %}

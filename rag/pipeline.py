@@ -7,7 +7,9 @@ also used by the multi-turn `rag.chat` session.
 from __future__ import annotations
 
 import os
+import re
 import sys
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -24,7 +26,7 @@ def require_api_key() -> None:
 
 
 def complete(client, model: str, system: str, messages: list[dict],
-             max_tokens: int = 1500) -> str:
+             max_tokens: int = 4096, warn_truncation: bool = True) -> str:
     """One Anthropic call, with the project's clean error handling."""
     import anthropic
 
@@ -38,6 +40,9 @@ def complete(client, model: str, system: str, messages: list[dict],
         sys.exit(f"Anthropic API error ({e.status_code}): {e.message}")
     except anthropic.APIConnectionError as e:
         sys.exit(f"Could not reach the Anthropic API: {e}")
+    if warn_truncation and resp.stop_reason == "max_tokens":
+        print(f"[warning] answer truncated at max_tokens={max_tokens}; "
+              "raise the cap for a complete response.", file=sys.stderr)
     return "".join(block.text for block in resp.content if block.type == "text")
 
 
@@ -74,16 +79,51 @@ def user_turn(question: str, chunks: list[dict]) -> dict:
     }
 
 
-def answer(question: str, k: int = config.TOP_K, high_quality: bool = False) -> str:
+def answer(question: str, k: int = config.TOP_K, high_quality: bool = False,
+           retriever: Retriever | None = None, client=None) -> str:
+    """Grounded one-shot answer. `retriever`/`client` may be injected so a
+    long-lived host (e.g. the web server) reuses one embed model + API client
+    across requests instead of reloading per call."""
     require_api_key()
 
-    chunks = retrieve(Retriever(), question, k=k)
+    chunks = retrieve(retriever or Retriever(), question, k=k)
     if not chunks:
         return "No passages were retrieved for that question; the index may be empty."
 
-    import anthropic
-
-    client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
+    if client is None:
+        import anthropic
+        client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
     model = config.GEN_MODEL_HQ if high_quality else config.GEN_MODEL
     body = complete(client, model, prompts.SYSTEM_PROMPT, [user_turn(question, chunks)])
     return f"{body}\n\n{_sources_footer(chunks)}"
+
+
+def _slug(text: str, max_len: int = 60) -> str:
+    """A filesystem-safe stub of the question for auto-named answer files."""
+    stub = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return stub[:max_len].rstrip("-") or "answer"
+
+
+def save_answer(question: str, answer_text: str, model: str,
+                path: str | Path | None = None) -> Path:
+    """Write a rendered Markdown record of an answer for later re-reading.
+
+    With no `path`, auto-names a timestamped file under `config.ANSWERS_DIR`.
+    Returns the path written.
+    """
+    now = datetime.now()
+    if path is None:
+        config.ANSWERS_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = now.strftime("%Y-%m-%d-%H%M%S")
+        path = config.ANSWERS_DIR / f"{stamp}-{_slug(question)}.md"
+    else:
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+    doc = (
+        f"# {question}\n\n"
+        f"*{now.strftime('%Y-%m-%d %H:%M:%S')} — {model}*\n\n"
+        f"{answer_text}\n"
+    )
+    path.write_text(doc, encoding="utf-8")
+    return path

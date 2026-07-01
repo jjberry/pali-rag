@@ -3,3 +3,8 @@
 sentence-transformers==5.6.0
 chromadb==1.5.9
 anthropic==0.113.0
+
+# Web UI (cli.py web). Already present transitively via the above; pinned here
+# so the browser UI can't break if an upstream drops them.
+markdown-it-py==4.2.0
+Jinja2==3.1.6

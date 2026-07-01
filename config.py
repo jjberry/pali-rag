@@ -37,6 +37,8 @@ CHUNKS_JSONL = DATA_DIR / "chunks.jsonl"
 CHROMA_DIR = DATA_DIR / "chroma"
 # Saved multi-turn `chat` conversations (resumable by name).
 SESSIONS_DIR = DATA_DIR / "sessions"
+# Saved one-shot `ask` answers (Markdown, for later re-reading).
+ANSWERS_DIR = DATA_DIR / "answers"
 
 # --- Pipeline parameters --------------------------------------------------
 # Nikāyas to ingest. DN/MN/SN/AN are fully covered by Sujato's English;

@@ -1,0 +1,61 @@
+:root {
+  --ink: #1a1a1a;
+  --muted: #6b6b6b;
+  --accent: #7a3b1d;      /* ochre/robe */
+  --line: #e3ddd2;
+  --bg: #faf7f1;
+  --card: #ffffff;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font: 17px/1.65 Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+header {
+  display: flex;
+  align-items: baseline;
+  gap: 1.5rem;
+  padding: 0.9rem 1.5rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+  position: sticky;
+  top: 0;
+}
+.brand { font-weight: 700; color: var(--accent); text-decoration: none; font-size: 1.1rem; }
+nav a { color: var(--muted); text-decoration: none; margin-right: 1rem; }
+nav a.active, nav a:hover { color: var(--ink); }
+main { max-width: 780px; margin: 0 auto; padding: 1.5rem; }
+h1 { font-size: 1.5rem; }
+
+.answer-list { list-style: none; padding: 0; }
+.answer-list li { padding: 0.6rem 0; border-bottom: 1px solid var(--line); }
+.answer-list a { color: var(--accent); text-decoration: none; }
+.answer-list a:hover { text-decoration: underline; }
+.meta, .sources { color: var(--muted); font-size: 0.85rem; }
+.answer-list .meta { margin-left: 0.6rem; }
+.empty { color: var(--muted); }
+.back a, .back { color: var(--muted); text-decoration: none; }
+
+/* rendered markdown */
+.rendered { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 1.2rem 1.5rem; }
+.rendered table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.95rem; }
+.rendered th, .rendered td { border: 1px solid var(--line); padding: 0.5rem 0.7rem; text-align: left; vertical-align: top; }
+.rendered th { background: #f3ede2; }
+.rendered code { background: #f3ede2; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.9em; }
+.rendered blockquote { border-left: 3px solid var(--accent); margin: 1rem 0; padding-left: 1rem; color: var(--muted); }
+.rendered h1 { font-size: 1.35rem; }
+
+/* forms */
+.ask-form textarea { width: 100%; font: inherit; padding: 0.7rem; border: 1px solid var(--line); border-radius: 6px; resize: vertical; }
+.ask-form .row { display: flex; align-items: center; gap: 1rem; margin-top: 0.6rem; }
+button { font: inherit; background: var(--accent); color: #fff; border: 0; padding: 0.5rem 1.2rem; border-radius: 6px; cursor: pointer; }
+button:disabled { opacity: 0.5; cursor: default; }
+.spinner { color: var(--muted); font-style: italic; }
+.error { color: #a12; background: #fbeaea; padding: 0.7rem 1rem; border-radius: 6px; }
+
+/* chat */
+.transcript { margin-bottom: 1.5rem; }
+.turn { margin-bottom: 1.2rem; }
+.turn .q { font-weight: 700; color: var(--accent); margin-bottom: 0.5rem; }

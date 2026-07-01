@@ -5,6 +5,7 @@ Subcommands:
     check                 verify local data layout (sc-data, dpd.db)
     ask "<question>"      retrieve + generate a grounded answer  [needs index]
     chat                  interactive multi-turn grounded conversation
+    web                   browser UI: read saved answers, ask, chat
     term <pali-word>      DPD term-archaeology lookup            [needs dpd.db]
 
 The data pipeline (extract -> chunk -> embed_and_index) lives in scripts/.
@@ -32,14 +33,26 @@ def cmd_check(_args) -> int:
 
 
 def cmd_ask(args) -> int:
-    from rag.pipeline import answer
-    print(answer(args.question, high_quality=args.hq))
+    from rag.pipeline import answer, save_answer
+    text = answer(args.question, high_quality=args.hq)
+    print(text)
+    if args.save is not None:
+        # --save with no value -> auto-name; --save PATH -> that path.
+        path = save_answer(args.question, text,
+                           config.GEN_MODEL_HQ if args.hq else config.GEN_MODEL,
+                           path=args.save or None)
+        print(f"\n[saved to {path}]", file=sys.stderr)
     return 0
 
 
 def cmd_chat(args) -> int:
     from rag.chat import run_repl
     return run_repl(session=args.session, resume=args.resume, high_quality=args.hq)
+
+
+def cmd_web(args) -> int:
+    from web.app import serve
+    return serve(port=args.port, high_quality=args.hq)
 
 
 def cmd_term(args) -> int:
@@ -59,6 +72,9 @@ def main() -> int:
     p_ask = sub.add_parser("ask", help="grounded RAG answer")
     p_ask.add_argument("question")
     p_ask.add_argument("--hq", action="store_true", help="use the high-quality model")
+    p_ask.add_argument("--save", nargs="?", const="", default=None, metavar="PATH",
+                       help="save the answer as Markdown; PATH optional "
+                            "(default: data/answers/<timestamp>-<question>.md)")
     p_ask.set_defaults(func=cmd_ask)
 
     p_chat = sub.add_parser("chat", help="interactive multi-turn RAG conversation")
@@ -66,6 +82,11 @@ def main() -> int:
     p_chat.add_argument("--session", help="name this conversation (saved for --resume)")
     p_chat.add_argument("--resume", help="resume a saved conversation by name")
     p_chat.set_defaults(func=cmd_chat)
+
+    p_web = sub.add_parser("web", help="serve the browser UI (read/ask/chat)")
+    p_web.add_argument("--port", type=int, default=8000, help="port (default 8000)")
+    p_web.add_argument("--hq", action="store_true", help="use the high-quality model")
+    p_web.set_defaults(func=cmd_web)
 
     p_term = sub.add_parser("term", help="DPD term lookup")
     p_term.add_argument("word")

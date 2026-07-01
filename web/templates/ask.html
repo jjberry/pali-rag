@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Ask</h1>
+<form method="post" action="/ask" class="ask-form" onsubmit="return onAsk()">
+  <textarea name="question" rows="3" placeholder="Ask a question of the Pāli Canon…"
+            required>{{ question or "" }}</textarea>
+  <div class="row">
+    <label><input type="checkbox" name="hq" {% if hq %}checked{% endif %}> high-quality model</label>
+    <button type="submit" id="askbtn">Ask</button>
+    <span id="spinner" class="spinner" hidden>thinking…</span>
+  </div>
+</form>
+
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+{% if html %}
+<article class="rendered">
+  {{ html | safe }}
+</article>
+{% if saved %}<p class="meta">Saved to <code>{{ saved }}</code></p>{% endif %}
+{% endif %}
+
+<script>
+function onAsk() {
+  document.getElementById('askbtn').disabled = true;
+  document.getElementById('spinner').hidden = false;
+  return true;
+}
+</script>
+{% endblock %}

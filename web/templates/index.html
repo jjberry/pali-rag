@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Saved answers</h1>
+{% if answers %}
+<ul class="answer-list">
+  {% for a in answers %}
+  <li>
+    <a href="/answers/{{ a.name }}">{{ a.title }}</a>
+    <span class="meta">{{ a.modified }}</span>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="empty">No saved answers yet. Head to <a href="/ask">Ask</a> or
+<a href="/chat">Chat</a> — answers are saved to <code>data/answers/</code>.</p>
+{% endif %}
+{% endblock %}
