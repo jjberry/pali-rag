@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+.DS_Store
 
 # Generated artifacts (regenerated from local sc-data / dpd.db)
 data/segments.jsonl

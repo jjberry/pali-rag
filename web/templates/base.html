@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title }} — Pāli Canon RAG</title>
   <link rel="stylesheet" href="/static/style.css">
+  <script>
+    // Apply the saved theme before first paint to avoid a flash.
+    (function () {
+      var t = localStorage.getItem("theme");
+      if (t) document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
 </head>
 <body>
   <header>
@@ -14,7 +21,21 @@
       <a href="/ask" {% if section == 'ask' %}class="active"{% endif %}>Ask</a>
       <a href="/chat" {% if section == 'chat' %}class="active"{% endif %}>Chat</a>
     </nav>
+    <button class="theme-toggle" type="button" onclick="toggleTheme()"
+            title="Toggle light/dark" aria-label="Toggle light/dark">◐</button>
   </header>
+  <script>
+    function toggleTheme() {
+      var el = document.documentElement;
+      var cur = el.getAttribute("data-theme");
+      if (!cur) {  // no explicit choice yet: infer from OS, then flip
+        cur = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      var next = cur === "dark" ? "light" : "dark";
+      el.setAttribute("data-theme", next);
+      localStorage.setItem("theme", next);
+    }
+  </script>
   <main>
     {% block body %}{% endblock %}
   </main>

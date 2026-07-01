@@ -5,6 +5,38 @@
   --line: #e3ddd2;
   --bg: #faf7f1;
   --card: #ffffff;
+  --subtle: #f3ede2;      /* table headers, inline code */
+  --on-accent: #ffffff;   /* text on an accent-filled button */
+  --err-ink: #aa1122;
+  --err-bg: #fbeaea;
+}
+/* Dark palette. Applied when the user explicitly picks dark, or when the OS
+   prefers dark and they haven't explicitly chosen light. */
+:root[data-theme="dark"] {
+  --ink: #e8e3d8;
+  --muted: #9a9082;
+  --accent: #d99a5b;      /* lighter ochre so it reads on dark */
+  --line: #3a3630;
+  --bg: #1c1a17;
+  --card: #26231e;
+  --subtle: #322e28;
+  --on-accent: #1c1a17;
+  --err-ink: #f0a5a5;
+  --err-bg: #3a2422;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink: #e8e3d8;
+    --muted: #9a9082;
+    --accent: #d99a5b;
+    --line: #3a3630;
+    --bg: #1c1a17;
+    --card: #26231e;
+    --subtle: #322e28;
+    --on-accent: #1c1a17;
+    --err-ink: #f0a5a5;
+    --err-bg: #3a2422;
+  }
 }
 * { box-sizing: border-box; }
 body {
@@ -42,18 +74,31 @@ h1 { font-size: 1.5rem; }
 .rendered { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 1.2rem 1.5rem; }
 .rendered table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.95rem; }
 .rendered th, .rendered td { border: 1px solid var(--line); padding: 0.5rem 0.7rem; text-align: left; vertical-align: top; }
-.rendered th { background: #f3ede2; }
-.rendered code { background: #f3ede2; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.9em; }
+.rendered th { background: var(--subtle); }
+.rendered code { background: var(--subtle); padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.9em; }
 .rendered blockquote { border-left: 3px solid var(--accent); margin: 1rem 0; padding-left: 1rem; color: var(--muted); }
 .rendered h1 { font-size: 1.35rem; }
 
 /* forms */
-.ask-form textarea { width: 100%; font: inherit; padding: 0.7rem; border: 1px solid var(--line); border-radius: 6px; resize: vertical; }
+.ask-form textarea { width: 100%; font: inherit; padding: 0.7rem; border: 1px solid var(--line); border-radius: 6px; resize: vertical; background: var(--card); color: var(--ink); }
 .ask-form .row { display: flex; align-items: center; gap: 1rem; margin-top: 0.6rem; }
-button { font: inherit; background: var(--accent); color: #fff; border: 0; padding: 0.5rem 1.2rem; border-radius: 6px; cursor: pointer; }
+button { font: inherit; background: var(--accent); color: var(--on-accent); border: 0; padding: 0.5rem 1.2rem; border-radius: 6px; cursor: pointer; }
 button:disabled { opacity: 0.5; cursor: default; }
 .spinner { color: var(--muted); font-style: italic; }
-.error { color: #a12; background: #fbeaea; padding: 0.7rem 1rem; border-radius: 6px; }
+.error { color: var(--err-ink); background: var(--err-bg); padding: 0.7rem 1rem; border-radius: 6px; }
+
+/* theme toggle (pushed to the right of the header) */
+.theme-toggle {
+  margin-left: auto;
+  align-self: center;
+  background: none;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  padding: 0.25rem 0.6rem;
+  font-size: 1rem;
+  line-height: 1;
+}
+.theme-toggle:hover { color: var(--ink); }
 
 /* chat */
 .transcript { margin-bottom: 1.5rem; }
