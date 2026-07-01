@@ -118,14 +118,28 @@ python3 cli.py ask "..." --save notes.md  # or a path you choose
 In `chat`, type `:save [path]` to export a transcript on demand; a
 `--session`-named chat also auto-exports `data/answers/<name>.md` on exit.
 
-**Web UI** (`web`) — a local browser front-end to read saved answers and run
-ask/chat with rendered Markdown (tables and all). Stdlib server, binds to
-`127.0.0.1` only; Read needs no API key, Ask/Chat do:
+**Web UI** (`web`) — a local browser front-end that renders answers as proper
+Markdown (tables, citations, and all), so long responses are easier to read
+than in the terminal:
 
 ```bash
 python3 cli.py web                        # http://127.0.0.1:8000
 python3 cli.py web --port 8080 --hq
 ```
+
+Three sections:
+
+- **Read** — browse and re-read everything saved under `data/answers/`,
+  rendered to HTML. Works with no API key.
+- **Ask** — one-shot questions; the answer is rendered inline and auto-saved
+  to `data/answers/`.
+- **Chat** — multi-turn, history-aware conversation in the browser (same
+  condense + retrieve pipeline as the REPL); each session auto-saves a
+  resumable transcript.
+
+It's a dependency-light stdlib server (`markdown-it-py` + Jinja2, both already
+pinned), single-user, and binds to `127.0.0.1` only — Read needs no API key,
+Ask/Chat require `ANTHROPIC_API_KEY`.
 
 **Term archaeology** (`term`) — expands a Pāli headword to its inflected forms
 via `dpd.db`, then whole-word searches the Pāli text for every occurrence, with
