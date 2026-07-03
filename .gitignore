@@ -10,3 +10,6 @@ data/chunks.jsonl
 data/chroma/
 data/sessions/
 data/answers/
+# BP pilot: per-user local cache of fetched TLB records. Never commit or ship
+# this — the licensing posture is redistribute-nothing (see bp/README.md).
+data/bp_cache.sqlite
