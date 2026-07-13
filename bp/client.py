@@ -26,6 +26,7 @@ import urllib.parse
 import urllib.request
 
 from . import config as C
+from . import robots
 from .cache import RecordCache
 
 # An edition tag: a language-family prefix (optionally qualified, e.g. "Tib Dūn")
@@ -56,11 +57,15 @@ class BPClient:
 
     # --- low-level fetch (rate-limited, identified) --------------------------
     def _get(self, params: dict) -> str:
+        url = C.BASE + "index.php?" + urllib.parse.urlencode(params)
+        # Courtesy gate: honour robots.txt before any live fetch (memoised, so
+        # this only hits the network once per host). Raises RobotsDisallowed if
+        # the path is forbidden; prints a one-time usage notice otherwise.
+        robots.ensure_allowed(url, C.USER_AGENT)
         # Space out live requests so we never hammer BP.
         wait = C.MIN_REQUEST_INTERVAL - (time.time() - self._last_request)
         if wait > 0:
             time.sleep(wait)
-        url = C.BASE + "index.php?" + urllib.parse.urlencode(params)
         req = urllib.request.Request(url, headers={"User-Agent": C.USER_AGENT})
         with urllib.request.urlopen(req, timeout=30) as resp:
             body = resp.read().decode("utf-8", errors="replace")

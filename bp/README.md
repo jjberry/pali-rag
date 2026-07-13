@@ -79,6 +79,8 @@ corpus itself is never re-embedded.
 | `config.py` | BP endpoints, cache path, User-Agent, text→vid map; reuses v1's embedder |
 | `cache.py`  | immutable cache: `records` (segments) + `texts` (harvest marker) |
 | `client.py` | polite BP client: `search()`, `fetch_text()` (continuous view) + `fetch_record()` + parsers |
+| `robots.py` | courtesy robots.txt gate consulted before every live fetch |
+| `integrate.py` | glue for hosting the BP answer beside the v1 Pāli answer (used by the main CLI/web) |
 | `pilot.py`  | the expand → pick-texts → harvest → rerank → answer loop + CLI |
 
 ## Run
@@ -111,4 +113,11 @@ one HTTP request (~2–4 s); after that it re-reads from cache in ~10 ms.
   warm `0 new / 3958 cached`. Switching embedders re-embeds (model is in the key).
 - `fetch_record()` (per-segment, UUID-cited) is kept for reference/debug but is
   no longer the retrieval path.
-- No `robots.txt` / ToS check — add before any heavier use.
+- **robots.txt is honoured** (`robots.py`, gated in `client._get`): a real
+  `Disallow` for our path raises and stops the fetch; an absent/4xx robots.txt
+  (BP's host returns **403** for `/robots.txt` — a legacy quirk, not an
+  intentional block) is treated as no restrictions, per RFC 9309. The check
+  fetches once (memoised) and prints a one-time usage notice (rate limit + the
+  local-cache-only, no-redistribution reminder). Escape hatch: `BP_IGNORE_ROBOTS=1`.
+  BP has no machine-readable ToS/licence beyond "open access" — review the
+  source's own terms before heavier use.

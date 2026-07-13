@@ -24,6 +24,7 @@ import re
 import sys
 
 from . import config as C
+from . import robots
 from .client import BPClient
 
 _EXPAND_SYSTEM = (
@@ -253,8 +254,11 @@ def main() -> None:
     ap.add_argument("--max-texts", type=int, default=12,
                     help="cap how many texts to harvest per question (default 12)")
     args = ap.parse_args()
-    answer(args.question, hq=args.hq, all_libraries=args.all_libraries,
-           k=args.k, max_texts=args.max_texts)
+    try:
+        answer(args.question, hq=args.hq, all_libraries=args.all_libraries,
+               k=args.k, max_texts=args.max_texts)
+    except robots.RobotsDisallowed as e:
+        sys.exit(str(e))
 
 
 if __name__ == "__main__":

@@ -106,6 +106,10 @@ is slower (live, rate-limited network requests) and needs a network connection;
 without `--secondary` nothing changes. Works on `ask` and `chat`, and as a
 checkbox in the web UI's Ask and Chat pages.
 
+Live BP access is a good citizen: it honours the source's `robots.txt`, spaces
+out requests, identifies itself, and caches fetched text locally only (never
+redistributed). See `bp/README.md` for details.
+
 **Multi-turn conversation** (`chat`) — `ask` is one-shot; `chat` is an
 interactive REPL that keeps the conversation going. Each follow-up is condensed
 into a standalone search query (using the history) before retrieval, so
