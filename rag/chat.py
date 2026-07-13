@@ -7,6 +7,7 @@ history so the conversation stays coherent. Sessions can be saved and resumed.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import sys
 from pathlib import Path
@@ -20,7 +21,8 @@ EXIT_WORDS = {"exit", "quit", ":q"}
 
 
 class ChatSession:
-    def __init__(self, high_quality: bool = False, retriever=None, client=None) -> None:
+    def __init__(self, high_quality: bool = False, retriever=None, client=None,
+                 secondary_fn=None) -> None:
         self.model = config.GEN_MODEL_HQ if high_quality else config.GEN_MODEL
         self.high_quality = high_quality
         if client is None:
@@ -28,6 +30,10 @@ class ChatSession:
             client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
         self.client = client
         self.retriever = retriever or Retriever()
+        # Optional `question -> Markdown section` callable (see bp.integrate).
+        # rag/ never imports bp; the secondary-sources hook is injected so this
+        # module stays usable with the BP pilot absent. Never raises by contract.
+        self.secondary_fn = secondary_fn
         self.messages: list[dict] = []          # API history (passages inline)
         self.dialogue: list[dict] = []           # clean Q/A for condense + display
 
@@ -51,21 +57,39 @@ class ChatSession:
 
     def ask(self, question: str) -> dict:
         search_query = question if not self.dialogue else self._condense(question)
-        chunks = pipeline.retrieve(self.retriever, search_query)
 
+        # If secondary sources are on, run the BP lookup for this turn's search
+        # query concurrently with the Pāli retrieve+generate, so its (slow,
+        # rate-limited) network work overlaps rather than adding to the turn.
+        sec_future = None
+        executor = None
+        if self.secondary_fn:
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            sec_future = executor.submit(self.secondary_fn, search_query)
+
+        chunks = pipeline.retrieve(self.retriever, search_query)
         self.messages.append(pipeline.user_turn(question, chunks))
         body = pipeline.complete(
             self.client, self.model, prompts.SYSTEM_PROMPT, self.messages
         )
         self.messages.append({"role": "assistant", "content": body})
 
+        secondary = None
+        if sec_future is not None:
+            secondary = sec_future.result()  # secondary_fn never raises
+            executor.shutdown(wait=False)
+
         sources = pipeline.source_uids(chunks)
         self.dialogue.append({"role": "user", "text": question})
-        self.dialogue.append({"role": "assistant", "text": body, "sources": sources})
+        entry = {"role": "assistant", "text": body, "sources": sources}
+        if secondary:  # stored apart from `text` so condense/history stay clean
+            entry["secondary"] = secondary
+        self.dialogue.append(entry)
         return {
             "answer": body,
             "sources": sources,
             "search_query": search_query,
+            "secondary": secondary,
         }
 
     # --- persistence ------------------------------------------------------
@@ -102,24 +126,39 @@ class ChatSession:
                 lines.append(f"\n## {turn['text']}\n")
             else:
                 lines.append(f"{turn['text']}\n")
+                if turn.get("secondary"):  # BP section, when it was on for the turn
+                    lines.append(f"{turn['secondary']}\n")
         out.write_text("\n".join(lines), encoding="utf-8")
         return out
 
     @classmethod
-    def load(cls, name: str, retriever=None, client=None) -> "ChatSession":
+    def load(cls, name: str, retriever=None, client=None,
+             secondary_fn=None) -> "ChatSession":
         path = config.SESSIONS_DIR / f"{name}.json"
         if not path.exists():
             sys.exit(f"no saved session '{name}' at {path}")
         data = json.loads(path.read_text())
         conv = cls(high_quality=data.get("high_quality", False),
-                   retriever=retriever, client=client)
+                   retriever=retriever, client=client, secondary_fn=secondary_fn)
         conv.messages = data.get("messages", [])
         conv.dialogue = data.get("dialogue", [])
         return conv
 
 
+def _build_secondary_fn(conv: "ChatSession", high_quality: bool):
+    """Bind a BP secondary-sources callable to the session's shared model +
+    client. Imported lazily and only when the flag is on, so rag.chat has no
+    import-time dependency on the bp package for the common (no-secondary) path."""
+    from bp.client import BPClient
+    from bp.integrate import make_secondary_fn
+
+    return make_secondary_fn(anthropic_client=conv.client,
+                             embed_model=conv.retriever.model, bp=BPClient(),
+                             hq=high_quality)
+
+
 def run_repl(session: str | None = None, resume: str | None = None,
-             high_quality: bool = False) -> int:
+             high_quality: bool = False, secondary: bool = False) -> int:
     pipeline.require_api_key()
 
     # The REPL needs a real terminal; under a non-interactive stdin (e.g. a
@@ -143,6 +182,10 @@ def run_repl(session: str | None = None, resume: str | None = None,
     else:
         conv = ChatSession(high_quality=high_quality)
         name = session
+
+    if secondary:  # wire the BP hook after the session (and its model) exists
+        conv.secondary_fn = _build_secondary_fn(conv, high_quality)
+        print("(secondary sources on — Bibliotheca Polyglotta; each turn is slower)")
 
     where = f" (saving to '{name}')" if name else " (not saved — use --session NAME)"
     print(f"\nPāli Canon chat{where}. Type a question; 'exit' to quit.")
@@ -172,6 +215,8 @@ def run_repl(session: str | None = None, resume: str | None = None,
             print(f"[searched: {result['search_query']}]", file=sys.stderr)
         print(f"\n{result['answer']}")
         print(f"\nSources retrieved: {', '.join(result['sources'])}")
+        if result.get("secondary"):
+            print(f"\n{result['secondary']}")
         if name:
             conv.save(name)
 

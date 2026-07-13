@@ -7,6 +7,7 @@ it's a single-user tool. Binds to 127.0.0.1 only.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import os
 import sys
 import threading
@@ -19,6 +20,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config  # noqa: E402
+from bp import integrate as bp_integrate  # noqa: E402
 from jinja2 import Environment, FileSystemLoader, select_autoescape  # noqa: E402
 from rag import pipeline  # noqa: E402
 from rag.chat import ChatSession  # noqa: E402
@@ -34,6 +36,7 @@ env = Environment(
 _lock = threading.Lock()
 _retriever = None
 _client = None
+_bp = None
 _chats: dict[str, ChatSession] = {}
 _high_quality = False
 
@@ -52,6 +55,31 @@ def _get_client():
         import anthropic
         _client = anthropic.Anthropic()
     return _client
+
+
+def _get_bp():
+    """Lazy BP client for the secondary-sources section. Its SQLite cache is
+    opened with check_same_thread=False; access stays serialized under _lock."""
+    global _bp
+    if _bp is None:
+        from bp.client import BPClient
+        _bp = BPClient()
+    return _bp
+
+
+def _secondary_section(question: str, hq: bool) -> str:
+    """The BP secondary-literature answer as a Markdown H2 section, reusing the
+    shared embed model + Anthropic client. Never raises (see bp.integrate)."""
+    return bp_integrate.secondary_section(
+        question, anthropic_client=_get_client(),
+        embed_model=_get_retriever().model, bp=_get_bp(), hq=hq)
+
+
+def _chat_secondary_fn(hq: bool):
+    """A per-turn BP callable for a chat session, bound to the shared singletons."""
+    return bp_integrate.make_secondary_fn(
+        anthropic_client=_get_client(), embed_model=_get_retriever().model,
+        bp=_get_bp(), hq=hq)
 
 
 def _model_name() -> str:
@@ -163,24 +191,34 @@ class Handler(BaseHTTPRequestHandler):
         form = self._form()
         question = (form.get("question") or "").strip()
         hq = "hq" in form
+        secondary = "secondary" in form
         if not question:
             return self._render("ask.html", title="Ask", section="ask",
                                 error="Please enter a question.")
         if not _have_api_key():
             return self._render("ask.html", title="Ask", section="ask",
-                                question=question, hq=hq,
+                                question=question, hq=hq, secondary=secondary,
                                 error="ANTHROPIC_API_KEY is not set; needed to generate answers.")
         try:
+            # Hold _lock for the whole request (single-user: never overlap two
+            # browser requests), but run the Pāli and secondary pipelines
+            # concurrently *within* it so their network waits (BP's rate-limited
+            # fetches + both Claude calls) overlap instead of summing.
             with _lock:
-                text = pipeline.answer(question, high_quality=hq,
+                with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+                    f_pali = ex.submit(pipeline.answer, question, high_quality=hq,
                                        retriever=_get_retriever(), client=_get_client())
+                    f_bp = ex.submit(_secondary_section, question, hq) if secondary else None
+                    pali_text = f_pali.result()  # re-raises SystemExit here
+                    bp_section = f_bp.result() if f_bp else None
+                text = bp_integrate.combine(pali_text, bp_section) if secondary else pali_text
                 model = config.GEN_MODEL_HQ if hq else config.GEN_MODEL
                 saved = pipeline.save_answer(question, text, model)
         except SystemExit as e:  # pipeline uses sys.exit for API/index errors
             return self._render("ask.html", title="Ask", section="ask",
-                                question=question, hq=hq, error=str(e))
+                                question=question, hq=hq, secondary=secondary, error=str(e))
         return self._render("ask.html", title="Ask", section="ask",
-                            question=question, hq=hq,
+                            question=question, hq=hq, secondary=secondary,
                             html=markdown_to_html(text), saved=saved)
 
     def _get_chat(self, new: bool):
@@ -190,18 +228,19 @@ class Handler(BaseHTTPRequestHandler):
         if sid is None:
             sid = uuid.uuid4().hex[:8]
             cookie = f"sid={sid}; Path=/; SameSite=Lax"
-        return self._render("chat.html", title="Chat", section="chat",
-                            sid=sid, turns=_turns(conv), cookie=cookie)
+        return self._render("chat.html", title="Chat", section="chat", sid=sid,
+                            turns=_turns(conv), secondary=False, cookie=cookie)
 
     def _post_chat(self):
         form = self._form()
         sid = (form.get("sid") or self._cookie("sid") or uuid.uuid4().hex[:8])
         question = (form.get("question") or "").strip()
+        secondary = "secondary" in form
         if not question:
             return self._get_chat(new=False)
         if not _have_api_key():
             return self._render("chat.html", title="Chat", section="chat", sid=sid,
-                                turns=_turns(_chats.get(sid)),
+                                turns=_turns(_chats.get(sid)), secondary=secondary,
                                 error="ANTHROPIC_API_KEY is not set; needed to generate answers.")
         try:
             with _lock:
@@ -210,14 +249,16 @@ class Handler(BaseHTTPRequestHandler):
                     conv = ChatSession(high_quality=_high_quality,
                                        retriever=_get_retriever(), client=_get_client())
                     _chats[sid] = conv
+                # Honor the checkbox per message so it can be toggled mid-chat.
+                conv.secondary_fn = _chat_secondary_fn(_high_quality) if secondary else None
                 conv.ask(question)
                 conv.save(sid)
                 conv.export_markdown(str(config.ANSWERS_DIR / f"{sid}.md"))
         except SystemExit as e:
             return self._render("chat.html", title="Chat", section="chat", sid=sid,
-                                turns=_turns(_chats.get(sid)), error=str(e))
+                                turns=_turns(_chats.get(sid)), secondary=secondary, error=str(e))
         return self._render("chat.html", title="Chat", section="chat",
-                            sid=sid, turns=_turns(conv))
+                            sid=sid, turns=_turns(conv), secondary=secondary)
 
 
 def _turns(conv: ChatSession | None) -> list[dict]:
@@ -233,6 +274,7 @@ def _turns(conv: ChatSession | None) -> list[dict]:
                 "role": "assistant",
                 "html": markdown_to_html(t["text"]),
                 "sources": ", ".join(t.get("sources", [])),
+                "secondary_html": markdown_to_html(t["secondary"]) if t.get("secondary") else None,
             })
     return out
 

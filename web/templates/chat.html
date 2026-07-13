@@ -16,6 +16,7 @@
     {% else %}
       <article class="rendered">{{ t.html | safe }}</article>
       {% if t.sources %}<p class="sources">Sources: {{ t.sources }}</p>{% endif %}
+      {% if t.secondary_html %}<article class="rendered secondary">{{ t.secondary_html | safe }}</article>{% endif %}
     {% endif %}
   </div>
   {% endfor %}
@@ -28,6 +29,7 @@
   <input type="hidden" name="sid" value="{{ sid }}">
   <textarea name="question" rows="2" placeholder="Ask a follow-up…" required autofocus></textarea>
   <div class="row">
+    <label><input type="checkbox" name="secondary" {% if secondary %}checked{% endif %}> include secondary sources (slower)</label>
     <button type="submit" id="askbtn">Send</button>
     <span id="spinner" class="spinner" hidden>thinking…</span>
   </div>

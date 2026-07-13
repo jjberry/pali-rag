@@ -104,3 +104,12 @@ button:disabled { opacity: 0.5; cursor: default; }
 .transcript { margin-bottom: 1.5rem; }
 .turn { margin-bottom: 1.2rem; }
 .turn .q { font-weight: 700; color: var(--accent); margin-bottom: 0.5rem; }
+
+/* secondary-sources (Bibliotheca Polyglotta) block in a chat turn */
+.rendered.secondary {
+  margin-top: 1rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--line);
+  color: var(--muted);
+}
+.rendered.secondary h2 { color: var(--accent); }

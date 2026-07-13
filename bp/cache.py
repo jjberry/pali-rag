@@ -70,7 +70,11 @@ class RecordCache:
     def __init__(self, path: Path | None = None) -> None:
         self.path = path or C.CACHE_DB
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(str(self.path))
+        # check_same_thread=False: the web server hands each request to a fresh
+        # thread, so a cached BPClient/RecordCache singleton is reached from
+        # different threads over time. Access is still serialized upstream (the
+        # web app's _lock), so dropping the affinity check is safe here.
+        self.db = sqlite3.connect(str(self.path), check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(_SCHEMA)
 

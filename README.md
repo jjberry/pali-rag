@@ -88,12 +88,23 @@ sutta-UID citations. Requires an Anthropic API key:
 export ANTHROPIC_API_KEY=sk-ant-...
 python3 cli.py ask "What does the Buddha say about the cause of suffering?"
 python3 cli.py ask "..." --hq          # use the higher-quality model (opus)
+python3 cli.py ask "..." --secondary   # add a second, secondary-sources answer
 ```
 
 A Pāli technical term in the query (e.g. `dukkha`) is automatically expanded
 with its DPD English glosses before retrieval — so it matches the English-only
 index even though the indexed text says "suffering", not "dukkha". The model
 still answers your original wording; the expansion is logged to stderr.
+
+**Secondary sources** (`--secondary`) — adds a second section that answers the
+same question from Mahāyāna / secondary literature via
+[Bibliotheca Polyglotta](https://www2.hf.uio.no/polyglotta/) (the `bp/` pilot:
+live keyword search → fetch → semantic re-rank → cited answer). The two answers
+appear under `## From the Pāli Canon` and `## From the secondary literature`
+headings and are saved together. It runs concurrently with the Pāli answer, but
+is slower (live, rate-limited network requests) and needs a network connection;
+without `--secondary` nothing changes. Works on `ask` and `chat`, and as a
+checkbox in the web UI's Ask and Chat pages.
 
 **Multi-turn conversation** (`chat`) — `ask` is one-shot; `chat` is an
 interactive REPL that keeps the conversation going. Each follow-up is condensed
@@ -105,6 +116,7 @@ can be saved and resumed:
 python3 cli.py chat                       # ephemeral session
 python3 cli.py chat --session anatta      # save under a name
 python3 cli.py chat --resume anatta       # continue it later
+python3 cli.py chat --secondary           # add secondary sources each turn
 ```
 
 **Saving answers to re-read later** — answers are written as Markdown under
@@ -132,10 +144,12 @@ Three sections:
 - **Read** — browse and re-read everything saved under `data/answers/`,
   rendered to HTML. Works with no API key.
 - **Ask** — one-shot questions; the answer is rendered inline and auto-saved
-  to `data/answers/`.
+  to `data/answers/`. An *include secondary sources* checkbox adds the
+  Bibliotheca Polyglotta section (see `--secondary` above).
 - **Chat** — multi-turn, history-aware conversation in the browser (same
   condense + retrieve pipeline as the REPL); each session auto-saves a
-  resumable transcript.
+  resumable transcript. The same *secondary sources* checkbox is available and
+  can be toggled per message.
 
 It's a dependency-light stdlib server (`markdown-it-py` + Jinja2, both already
 pinned), single-user, and binds to `127.0.0.1` only — Read needs no API key,

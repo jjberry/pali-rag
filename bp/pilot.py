@@ -179,9 +179,55 @@ def _cite(seg: dict) -> str:
     return f"{seg['source_text'] or seg['vid']} ({where}) — {C.BASE}"
 
 
+_ANSWER_SYSTEM = (
+    "Answer using ONLY the provided TLB passages. Cite each claim with its "
+    "[n] and the source text. These are Mahāyāna/secondary-literature "
+    "sources; note where they differ from early-canon usage if relevant."
+)
+
+
+def _source_line(i: int, seg: dict) -> str:
+    """One Markdown numbered-list source entry; permalink cites become links."""
+    cite = _cite(seg)
+    if cite.startswith("http"):
+        label = seg.get("source_text") or f"vid {seg['vid']}"
+        return f"{i}. [{label} — BP permalink]({cite})"
+    return f"{i}. {cite}"
+
+
+def answer_markdown(question: str, *, anthropic_client, embed_model, bp: BPClient,
+                    texts: dict[str, int] | None, hq: bool = False, k: int = 8,
+                    max_texts: int = 12) -> str | None:
+    """Retrieve + answer, returning a Markdown section (body + a **Sources**
+    list) so a host can compose it alongside other content — e.g. as a second
+    section next to the v1 Pāli-canon answer in the web UI. Injected
+    `anthropic_client`/`embed_model`/`bp` let the host share its singletons.
+    `texts` follows `retrieve`'s contract: a name->vid dict for a curated
+    subset, or None to search all TLB libraries. Returns None if nothing hit."""
+    segs = retrieve(question, anthropic_client=anthropic_client,
+                    embed_model=embed_model, bp=bp, texts=texts, k=k,
+                    max_texts=max_texts)
+    if not segs:
+        return None
+
+    context = "\n\n".join(
+        f"[{i+1}] ({s['source_text'] or s['vid']}; seg {s['mid']})\n{s['english']}"
+        for i, s in enumerate(segs)
+    )
+    body = anthropic_client.messages.create(
+        model=C.GEN_MODEL_HQ if hq else C.GEN_MODEL,
+        max_tokens=2048,
+        system=_ANSWER_SYSTEM,
+        messages=[{"role": "user",
+                   "content": f"Question: {question}\n\nPassages:\n{context}"}],
+    ).content[0].text
+    sources = "\n".join(_source_line(i + 1, s) for i, s in enumerate(segs))
+    return f"{body}\n\n**Sources**\n\n{sources}"
+
+
 def answer(question: str, *, hq: bool = False, all_libraries: bool = False,
            k: int = 8, max_texts: int = 12) -> None:
-    """End-to-end pilot: retrieve then have Claude answer with citations."""
+    """End-to-end pilot for the CLI: build the singletons, then print."""
     import anthropic
     from sentence_transformers import SentenceTransformer
 
@@ -190,31 +236,11 @@ def answer(question: str, *, hq: bool = False, all_libraries: bool = False,
     bp = BPClient()
 
     texts = None if all_libraries else C.TEXTS
-    segs = retrieve(question, anthropic_client=client, embed_model=embed_model,
-                    bp=bp, texts=texts, k=k, max_texts=max_texts)
-    if not segs:
+    md = answer_markdown(question, anthropic_client=client, embed_model=embed_model,
+                         bp=bp, texts=texts, hq=hq, k=k, max_texts=max_texts)
+    if md is None:
         sys.exit("no segments retrieved (try --all-libraries or rephrasing)")
-
-    context = "\n\n".join(
-        f"[{i+1}] ({s['source_text'] or s['vid']}; seg {s['mid']})\n{s['english']}"
-        for i, s in enumerate(segs)
-    )
-    system = (
-        "Answer using ONLY the provided TLB passages. Cite each claim with its "
-        "[n] and the source text. These are Mahāyāna/secondary-literature "
-        "sources; note where they differ from early-canon usage if relevant."
-    )
-    resp = client.messages.create(
-        model=C.GEN_MODEL_HQ if hq else C.GEN_MODEL,
-        max_tokens=2048,
-        system=system,
-        messages=[{"role": "user",
-                   "content": f"Question: {question}\n\nPassages:\n{context}"}],
-    )
-    print(resp.content[0].text)
-    print("\n--- sources ---")
-    for i, s in enumerate(segs):
-        print(f"[{i+1}] {_cite(s)}")
+    print(md)
 
 
 def main() -> None:

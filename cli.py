@@ -33,8 +33,30 @@ def cmd_check(_args) -> int:
 
 
 def cmd_ask(args) -> int:
-    from rag.pipeline import answer, save_answer
-    text = answer(args.question, high_quality=args.hq)
+    from rag.pipeline import answer, require_api_key, save_answer
+    if not args.secondary:
+        text = answer(args.question, high_quality=args.hq)
+    else:
+        # Run the Pāli and secondary (Bibliotheca Polyglotta) pipelines
+        # concurrently, sharing one embed model + client, so BP's rate-limited
+        # network work overlaps the Pāli answer rather than adding to it.
+        import concurrent.futures
+
+        import anthropic
+
+        from bp import integrate as bp_integrate
+        from bp.client import BPClient
+        from rag.retriever import Retriever
+
+        require_api_key()
+        retriever, client, bp = Retriever(), anthropic.Anthropic(), BPClient()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+            f_pali = ex.submit(answer, args.question, high_quality=args.hq,
+                               retriever=retriever, client=client)
+            f_bp = ex.submit(bp_integrate.secondary_section, args.question,
+                             anthropic_client=client, embed_model=retriever.model,
+                             bp=bp, hq=args.hq)
+            text = bp_integrate.combine(f_pali.result(), f_bp.result())
     print(text)
     if args.save is not None:
         # --save with no value -> auto-name; --save PATH -> that path.
@@ -47,7 +69,8 @@ def cmd_ask(args) -> int:
 
 def cmd_chat(args) -> int:
     from rag.chat import run_repl
-    return run_repl(session=args.session, resume=args.resume, high_quality=args.hq)
+    return run_repl(session=args.session, resume=args.resume,
+                    high_quality=args.hq, secondary=args.secondary)
 
 
 def cmd_web(args) -> int:
@@ -75,12 +98,18 @@ def main() -> int:
     p_ask.add_argument("--save", nargs="?", const="", default=None, metavar="PATH",
                        help="save the answer as Markdown; PATH optional "
                             "(default: data/answers/<timestamp>-<question>.md)")
+    p_ask.add_argument("--secondary", action="store_true",
+                       help="also answer from secondary literature "
+                            "(Bibliotheca Polyglotta); slower, needs network")
     p_ask.set_defaults(func=cmd_ask)
 
     p_chat = sub.add_parser("chat", help="interactive multi-turn RAG conversation")
     p_chat.add_argument("--hq", action="store_true", help="use the high-quality model")
     p_chat.add_argument("--session", help="name this conversation (saved for --resume)")
     p_chat.add_argument("--resume", help="resume a saved conversation by name")
+    p_chat.add_argument("--secondary", action="store_true",
+                        help="also answer from secondary literature "
+                             "(Bibliotheca Polyglotta); slower, needs network")
     p_chat.set_defaults(func=cmd_chat)
 
     p_web = sub.add_parser("web", help="serve the browser UI (read/ask/chat)")
